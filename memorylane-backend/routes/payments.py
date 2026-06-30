@@ -3,6 +3,7 @@ import hmac
 import hashlib
 import logging
 import uuid
+import datetime
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Header
 from fastapi.responses import JSONResponse
 from typing import List, Optional
@@ -136,7 +137,7 @@ def verify_payment(req: PaymentVerifyRequest, background_tasks: BackgroundTasks)
                     "razorpay_payment_id": req.razorpay_payment_id,
                     "razorpay_signature": req.razorpay_signature,
                     "status": "paid",
-                    "paid_at": "now()"
+                    "paid_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
                 }).eq("razorpay_order_id", req.razorpay_order_id).execute()
                 
                 order_res = supabase.table("orders").select("*").eq("id", order_id).execute()
@@ -171,7 +172,7 @@ def verify_payment(req: PaymentVerifyRequest, background_tasks: BackgroundTasks)
                         
                     supabase.table("orders").update({
                         "status": "processing",
-                        "processing_started_at": "now()"
+                        "processing_started_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
                     }).eq("id", order_id).execute()
                     
                     batch_id = None
@@ -240,7 +241,7 @@ def free_checkout(req: PaymentCreateRequest, background_tasks: BackgroundTasks, 
             "razorpay_order_id": f"free_{uuid.uuid4().hex[:12]}",
             "amount": 0,
             "status": "paid",
-            "paid_at": "now()"
+            "paid_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
         }).execute()
         
         event_name = ord_data.get("event_name") or ord_data.get("book_title") or "My Event"
@@ -272,7 +273,7 @@ def free_checkout(req: PaymentCreateRequest, background_tasks: BackgroundTasks, 
             
         supabase.table("orders").update({
             "status": "processing",
-            "processing_started_at": "now()"
+            "processing_started_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
         }).eq("id", req.order_id).execute()
         
         batch_id = None

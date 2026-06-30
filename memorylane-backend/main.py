@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -23,34 +24,71 @@ from utils.limiter import limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
-app = FastAPI(title="MemoryLane API", version="1.0.0")
+import time
+import logging
+from fastapi import Request
+
+# Configure structured logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("main")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler — replaces deprecated on_event startup/shutdown."""
+    # --- STARTUP ---
+    from utils.queue import get_queue
+    queue = get_queue("ai-pipeline")
+    if not queue.use_redis:
+        import asyncio
+        from worker import process_job, cleanup_expired_trials_task
+        queue.process("ai-pipeline", process_job)
+        asyncio.create_task(queue.run())
+        asyncio.create_task(cleanup_expired_trials_task())
+        logger.info("Redis is offline. Started in-app queue worker & trial cleaner background tasks.")
+
+    yield
+
+    # --- SHUTDOWN ---
+    queue = get_queue("ai-pipeline")
+    if queue.use_redis and queue.client:
+        queue.client.close()
+        logger.info("Gracefully closed Redis client connection.")
+
+
+app = FastAPI(title="MemoryLane API", version="1.0.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        os.getenv("FRONTEND_URL", "http://localhost:3000"),
+# Build CORS origins list — only include localhost in non-production environments
+is_production = os.getenv("ENV", "development").lower() == "production"
+allowed_origins = [os.getenv("FRONTEND_URL", "http://localhost:3000")]
+
+if not is_production:
+    allowed_origins.extend([
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:8000",
         "http://127.0.0.1:8000"
-    ],
+    ])
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-import time
-import logging
-from fastapi import Request
 
 @app.middleware("http")
 async def log_request_time(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     duration = time.time() - start_time
-    logger = logging.getLogger("main")
     logger.info(
         "Request: %s %s - Status: %s - Duration: %.3fs",
         request.method,
@@ -76,25 +114,3 @@ app.include_router(photographer.router, prefix="/photographer", tags=["photograp
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "memorylane-api"}
-
-@app.on_event("startup")
-async def startup():
-    from utils.queue import get_queue
-    queue = get_queue("ai-pipeline")
-    if not queue.use_redis:
-        import asyncio
-        from worker import process_job, cleanup_expired_trials_task
-        queue.process("ai-pipeline", process_job)
-        asyncio.create_task(queue.run())
-        asyncio.create_task(cleanup_expired_trials_task())
-        logger = logging.getLogger("main")
-        logger.info("Redis is offline. Started in-app queue worker & trial cleaner background tasks.")
-
-@app.on_event("shutdown")
-async def shutdown():
-    from utils.queue import get_queue
-    queue = get_queue("ai-pipeline")
-    if queue.use_redis and queue.client:
-        queue.client.close()
-        logger = logging.getLogger("main")
-        logger.info("Gracefully closed Redis client connection.")

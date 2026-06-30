@@ -140,7 +140,7 @@ def process_trial(trial_id: str):
     try:
         # Enqueue curation job
         queue = get_queue("ai-pipeline")
-        queue.enqueue("ai-pipeline", {
+        queue.add("ai-pipeline", {
             "batch_id": trial_id,
             "tier": "trial",
             "book_title": "Trial Preview",
@@ -150,7 +150,7 @@ def process_trial(trial_id: str):
         return {"job_id": trial_id}
     except Exception as e:
         logger.exception("Failed to queue trial AI processing job")
-        raise HTTPException(status_code=550, detail="Internal queue engine error")
+        raise HTTPException(status_code=500, detail="Internal queue engine error")
 
 
 @router.get("/result/{trial_id}")

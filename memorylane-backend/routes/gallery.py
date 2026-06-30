@@ -332,7 +332,7 @@ async def upload_guest_photo(
             "s3_key": s3_key,
             "quality_score": score,
             "status": status,
-            "approved_at": "now()" if is_approved else None
+            "approved_at": datetime.datetime.now(datetime.timezone.utc).isoformat() if is_approved else None
         }).execute()
         
         if is_approved:

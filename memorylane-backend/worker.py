@@ -56,6 +56,7 @@ async def process_job(job):
     language = "English"
     tier = "free"
     slug = ""
+    ord_data = None
     
     try:
         ord_res = supabase.table("orders").select("*").eq("id", order_id).execute()
@@ -203,7 +204,7 @@ async def process_job(job):
             "status": "ready",
             "share_url": share_url,
             "gallery_live": True,
-            "ready_at": "now()",
+            "ready_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "expires_at": expires_at
         }).eq("id", order_id).execute()
     except Exception as e:
@@ -214,11 +215,12 @@ async def process_job(job):
     user_name = "Customer"
     user_phone = ""
     try:
-        user_res = supabase.table("profiles").select("*").eq("id", ord_data["user_id"]).execute()
-        if user_res.data:
-            user_email = user_res.data[0].get("email") or user_email
-            user_name = user_res.data[0].get("name") or user_name
-            user_phone = user_res.data[0].get("phone") or ""
+        if ord_data and ord_data.get("user_id"):
+            user_res = supabase.table("profiles").select("*").eq("id", ord_data["user_id"]).execute()
+            if user_res.data:
+                user_email = user_res.data[0].get("email") or user_email
+                user_name = user_res.data[0].get("name") or user_name
+                user_phone = user_res.data[0].get("phone") or ""
     except Exception as e:
         logger.error("Failed to fetch user profiles for notifications: %s", e)
 

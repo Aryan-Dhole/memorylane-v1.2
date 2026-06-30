@@ -22,13 +22,14 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://memorylane.in"),
   title: "MemoryLane — AI Premium Photo Books",
   description: "India's first AI-driven premium photo book platform. Curate, sequence, caption, and print your memories.",
   openGraph: {
     title: "MemoryLane — AI Premium Photo Books",
     description: "India's first AI-driven premium photo book platform. Curate, sequence, caption, and print your memories.",
     images: ["/og-image.jpg"],
-    url: "https://yourdomain.com",
+    url: "https://memorylane.in",
     type: "website"
   }
 };

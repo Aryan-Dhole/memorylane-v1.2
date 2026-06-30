@@ -287,7 +287,7 @@ def send_admin_failed_job_alert(failed_job_data: dict) -> bool:
         resend.api_key = api_key
         resend.Emails.send({
             "from": "MemoryLane Admin <onboarding@resend.dev>",
-            "to": "admin@example.com",
+            "to": os.getenv("ADMIN_EMAIL", "admin@memorylane.in"),
             "subject": "CRITICAL: Background Job Failed Max Retries",
             "html": html_content
         })
