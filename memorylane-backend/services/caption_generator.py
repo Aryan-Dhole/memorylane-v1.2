@@ -157,8 +157,23 @@ async def analyze_photo_visually(image_path: str) -> dict:
         logger.warning("Visual analysis file not found: %s", image_path)
         return default_analysis
 
+    # Check cache first
+    try:
+        file_size = os.path.getsize(local_path)
+        cache_key = f"analysis:{os.path.basename(image_path)}:{file_size}"
+    except Exception:
+        cache_key = f"analysis:{image_path}"
+
+    if cache_key in _in_memory_cache:
+        try:
+            return json.loads(_in_memory_cache[cache_key])
+        except Exception:
+            pass
+
     gemini_key = os.getenv("GEMINI_API_KEY")
     anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+
+    analysis_res = None
 
     # 1. Try Gemini Vision
     if gemini_key and "mock" not in gemini_key and HAS_GEMINI:
@@ -175,12 +190,12 @@ async def analyze_photo_visually(image_path: str) -> dict:
                     text = text.split("```json")[1].split("```")[0].strip()
                 elif "```" in text:
                     text = text.split("```")[1].split("```")[0].strip()
-                return json.loads(text)
+                analysis_res = json.loads(text)
         except Exception as e:
             logger.error("Gemini Vision analysis failed: %s", e)
 
     # 2. Try Claude Vision
-    if anthropic_key and "mock" not in anthropic_key and HAS_ANTHROPIC:
+    if not analysis_res and anthropic_key and "mock" not in anthropic_key and HAS_ANTHROPIC:
         try:
             client = anthropic.AsyncAnthropic(api_key=anthropic_key)
             with open(local_path, "rb") as f:
@@ -221,32 +236,41 @@ async def analyze_photo_visually(image_path: str) -> dict:
                 text = text.split("```json")[1].split("```")[0].strip()
             elif "```" in text:
                 text = text.split("```")[1].split("```")[0].strip()
-            return json.loads(text)
+            analysis_res = json.loads(text)
         except Exception as e:
             logger.error("Claude Vision analysis failed: %s", e)
 
     # 3. Development Fallback Mock Details
-    path_hash = int(hashlib.md5(image_path.encode()).hexdigest(), 16)
-    scene_types = ["ceremony", "reception", "portraits", "candid", "food_detail", "dance", "ritual"]
-    emotions = ["smiling", "laughing", "candid_unaware", "serious", "surprised"]
-    details = [
-        "couple looking at each other not camera",
-        "family members embracing and smiling",
-        "guests laughing around a table",
-        "bride adjusting traditional bangles",
-        "flames rising from the holy havan kunda",
-        "dancing under golden canopy spotlights",
-        "colourful dessert counters and flower decor"
-    ]
+    if not analysis_res:
+        path_hash = int(hashlib.md5(image_path.encode()).hexdigest(), 16)
+        scene_types = ["ceremony", "reception", "portraits", "candid", "food_detail", "dance", "ritual"]
+        emotions = ["smiling", "laughing", "candid_unaware", "serious", "surprised"]
+        details = [
+            "couple looking at each other not camera",
+            "family members embracing and smiling",
+            "guests laughing around a table",
+            "bride adjusting traditional bangles",
+            "flames rising from the holy havan kunda",
+            "dancing under golden canopy spotlights",
+            "colourful dessert counters and flower decor"
+        ]
 
-    mock_analysis = default_analysis.copy()
-    mock_analysis["scene_type"] = scene_types[path_hash % len(scene_types)]
-    mock_analysis["dominant_emotion"] = emotions[path_hash % len(emotions)]
-    mock_analysis["notable_detail"] = details[path_hash % len(details)]
-    mock_analysis["is_detail_shot"] = "detail" in mock_analysis["scene_type"]
-    mock_analysis["face_count"] = 0 if mock_analysis["is_detail_shot"] else (1 if path_hash % 3 == 0 else 3)
-    
-    return mock_analysis
+        mock_analysis = default_analysis.copy()
+        mock_analysis["scene_type"] = scene_types[path_hash % len(scene_types)]
+        mock_analysis["dominant_emotion"] = emotions[path_hash % len(emotions)]
+        mock_analysis["notable_detail"] = details[path_hash % len(details)]
+        mock_analysis["is_detail_shot"] = "detail" in mock_analysis["scene_type"]
+        mock_analysis["face_count"] = 0 if mock_analysis["is_detail_shot"] else (1 if path_hash % 3 == 0 else 3)
+        analysis_res = mock_analysis
+
+    # Save to cache
+    try:
+        _in_memory_cache[cache_key] = json.dumps(analysis_res)
+        save_cache()
+    except Exception as e:
+        logger.error("Failed to save to cache: %s", e)
+
+    return analysis_res
 
 def build_photo_context(photo_index: int, all_photos: list, chapters: dict) -> dict:
     current = all_photos[photo_index]
@@ -299,6 +323,25 @@ async def generate_single_caption(
     style_key = event_context.get("caption_style", "cinematic").lower()
     style_instruction = CAPTION_STYLES.get(style_key, CAPTION_STYLES["cinematic"])
 
+    # Resolve local path for file size hashing
+    local_path = image_path
+    if not os.path.exists(local_path):
+        local_s3_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "local_s3_bucket"))
+        resolved = os.path.join(local_s3_dir, image_path)
+        if os.path.exists(resolved):
+            local_path = resolved
+
+    try:
+        file_size = os.path.getsize(local_path)
+        prev_cap_hash = hashlib.md5((prev_caption or "").encode()).hexdigest()[:6]
+        detail_hash = hashlib.md5((analysis.get("notable_detail") or "").encode()).hexdigest()[:6]
+        cache_key = f"caption:{os.path.basename(image_path)}:{file_size}:{style_key}:{event_context.get('language')}:{detail_hash}:{prev_cap_hash}"
+    except Exception:
+        cache_key = f"caption:{image_path}:{style_key}:{event_context.get('language')}"
+
+    if cache_key in _in_memory_cache:
+        return _in_memory_cache[cache_key]
+
     formatted_prompt = CAPTION_GENERATION_PROMPT.format(
         event_name=event_context.get("event_name", "My Event"),
         event_type=event_context.get("event_type", "Celebration"),
@@ -322,6 +365,8 @@ async def generate_single_caption(
     gemini_key = os.getenv("GEMINI_API_KEY")
     anthropic_key = os.getenv("ANTHROPIC_API_KEY")
 
+    caption_res = None
+
     # 1. Try Gemini
     if gemini_key and "mock" not in gemini_key and HAS_GEMINI:
         try:
@@ -340,12 +385,12 @@ async def generate_single_caption(
             if caption:
                 if caption.startswith('"') and caption.endswith('"'):
                     caption = caption[1:-1]
-                return caption
+                caption_res = caption
         except Exception as e:
             logger.error("Gemini text caption generation failed: %s", e)
 
     # 2. Try Claude
-    if anthropic_key and "mock" not in anthropic_key and HAS_ANTHROPIC:
+    if not caption_res and anthropic_key and "mock" not in anthropic_key and HAS_ANTHROPIC:
         try:
             client = anthropic.AsyncAnthropic(api_key=anthropic_key)
             message = await client.messages.create(
@@ -357,76 +402,86 @@ async def generate_single_caption(
             caption = message.content[0].text.strip()
             if caption.startswith('"') and caption.endswith('"'):
                 caption = caption[1:-1]
-            return caption
+            caption_res = caption
         except Exception as e:
             logger.error("Claude text caption generation failed: %s", e)
 
     # 3. Development Fallback Mock Captions matching tone styles
-    path_hash = int(hashlib.md5(image_path.encode()).hexdigest(), 16)
-    
-    # Premium observatives matching tone rules without forbidden words
-    presets = {
-        "cinematic": [
-            "Heavy doors slide open. She doesn't look up yet.",
-            "Laughter spills over the edge of the dining tables.",
-            "Confetti settles on his collar while she continues dancing.",
-            "Nani leads the bridesmaids out onto the lit dancefloor.",
-            "The evening lights turn the canopy backdrop into gold."
-        ],
-        "warm": [
-            "We found nani claiming the center of the dancefloor early.",
-            "Look at the way he watches her adjust her bangles.",
-            "This table stayed talking long after the desserts cleared.",
-            "You can tell she was trying hard not to tear up here.",
-            "The kind of candid hug that makes everyone look away."
-        ],
-        "witty": [
-            "Exactly five seconds before the flower girl stole the cake.",
-            "They promised zero drama. The expressions say otherwise.",
-            "He's explaining the schedule. Nobody appears to be listening.",
-            "The photographer asked for serious looks. This is the result.",
-            "Diyas are lit. The relatives are already ranking the snacks."
-        ],
-        "poetic": [
-            "Flame meets wick as whispers float into the night.",
-            "A single step forward, leaving footprints in gold dust.",
-            "Silhouettes dance against the orange glow of the embers.",
-            "The bangles chime softly in the stillness of the temple.",
-            "Glances exchanged across a room full of noise."
-        ],
-        "minimal": [
-            "A quiet glance.",
-            "Finally.",
-            "The dance begins.",
-            "Stealing a bite.",
-            "Together."
-        ]
-    }
-
-    style_presets = presets.get(style_key, presets["cinematic"])
-    base_caption = style_presets[path_hash % len(style_presets)]
-
-    if event_context.get("language") == "Hindi":
-        hindi_presets = {
-            "cinematic": "द्वार खुलते ही सबकी आँखें उन्हीं पर टिक गईं।",
-            "warm": "दादी ने सबसे पहले डांस फ्लोर संभाला।",
-            "witty": "मिठाई चुराने की कोशिश में पकड़े गए बच्चे।",
-            "poetic": "दीपशिखा की रोशनी में मुस्कुराता हुआ चेहरा।",
-            "minimal": "एक नई शुरुआत।"
-        }
-        return hindi_presets.get(style_key, hindi_presets["cinematic"])
-    elif event_context.get("language") == "Both":
-        hindi_presets = {
-            "cinematic": "द्वार खुलते ही सबकी आँखें उन्हीं पर टिक गईं।",
-            "warm": "दादी ने सबसे पहले डांस फ्लोर संभाला।",
-            "witty": "मिठाई चुराने की कोशिश में पकड़े गए बच्चे।",
-            "poetic": "दीपशिखा की रोशनी में मुस्कुराता हुआ चेहरा।",
-            "minimal": "एक नई शुरुआत।"
-        }
-        translated = hindi_presets.get(style_key, hindi_presets["cinematic"])
-        return f"{base_caption}<br />{translated}"
+    if not caption_res:
+        path_hash = int(hashlib.md5(image_path.encode()).hexdigest(), 16)
         
-    return base_caption
+        # Premium observatives matching tone rules without forbidden words
+        presets = {
+            "cinematic": [
+                "Heavy doors slide open. She doesn't look up yet.",
+                "Laughter spills over the edge of the dining tables.",
+                "Confetti settles on his collar while she continues dancing.",
+                "Nani leads the bridesmaids out onto the lit dancefloor.",
+                "The evening lights turn the canopy backdrop into gold."
+            ],
+            "warm": [
+                "We found nani claiming the center of the dancefloor early.",
+                "Look at the way he watches her adjust her bangles.",
+                "This table stayed talking long after the desserts cleared.",
+                "You can tell she was trying hard not to tear up here.",
+                "The kind of candid hug that makes everyone look away."
+            ],
+            "witty": [
+                "Exactly five seconds before the flower girl stole the cake.",
+                "They promised zero drama. The expressions say otherwise.",
+                "He's explaining the schedule. Nobody appears to be listening.",
+                "The photographer asked for serious looks. This is the result.",
+                "Diyas are lit. The relatives are already ranking the snacks."
+            ],
+            "poetic": [
+                "Flame meets wick as whispers float into the night.",
+                "A single step forward, leaving footprints in gold dust.",
+                "Silhouettes dance against the orange glow of the embers.",
+                "The bangles chime softly in the stillness of the temple.",
+                "Glances exchanged across a room full of noise."
+            ],
+            "minimal": [
+                "A quiet glance.",
+                "Finally.",
+                "The dance begins.",
+                "Stealing a bite.",
+                "Together."
+            ]
+        }
+
+        style_presets = presets.get(style_key, presets["cinematic"])
+        base_caption = style_presets[path_hash % len(style_presets)]
+
+        if event_context.get("language") == "Hindi":
+            hindi_presets = {
+                "cinematic": "द्वार खुलते ही सबकी आँखें उन्हीं पर टिक गईं।",
+                "warm": "दादी ने सबसे पहले डांस फ्लोर संभाला।",
+                "witty": "मिठाई चुराने की कोशिश में पकड़े गए बच्चे।",
+                "poetic": "दीपशिखा की रोशनी में मुस्कुराता हुआ चेहरा।",
+                "minimal": "एक नई शुरुआत।"
+            }
+            caption_res = hindi_presets.get(style_key, hindi_presets["cinematic"])
+        elif event_context.get("language") == "Both":
+            hindi_presets = {
+                "cinematic": "द्वार खुलते ही सबकी आँखें उन्हीं पर टिक गईं।",
+                "warm": "दादी ने सबसे पहले डांस फ्लोर संभाला।",
+                "witty": "मिठाई चुराने की कोशिश में पकड़े गए बच्चे।",
+                "poetic": "दीपशिखा की रोशनी में मुस्कुराता हुआ चेहरा।",
+                "minimal": "एक नई शुरुआत।"
+            }
+            translated = hindi_presets.get(style_key, hindi_presets["cinematic"])
+            caption_res = f"{base_caption}<br />{translated}"
+        else:
+            caption_res = base_caption
+
+    # Save to cache
+    try:
+        _in_memory_cache[cache_key] = caption_res
+        save_cache()
+    except Exception as e:
+        logger.error("Failed to save caption to cache: %s", e)
+        
+    return caption_res
 
 async def generate_captions_sequential(photos: list, event_context: dict) -> list:
     """

@@ -687,11 +687,27 @@ function UploadAndAIFlowContent() {
                     <Button
                       onClick={handleCheckoutPayment}
                       disabled={!shipping.name || !shipping.phone}
-                      className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs uppercase tracking-wider font-geist-mono py-5 rounded-full shadow-lg"
+                      className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs uppercase tracking-wider font-geist-mono py-5 rounded-full shadow-lg mb-4"
                     >
                       {orderTotal === 0 ? "Confirm & Build Gallery" : "Pay via Razorpay"}
                     </Button>
                   </motion.div>
+
+                  {/* Trust Signals */}
+                  <div className="space-y-3 pt-2 border-t border-zinc-100 text-[9px] font-geist-mono uppercase tracking-wider text-zinc-400">
+                    <div className="flex items-center gap-1.5 justify-center">
+                      <span className="text-zinc-650">🔒 Secure SSL 256-bit Connection</span>
+                    </div>
+                    {orderTotal > 0 && (
+                      <div className="text-center text-zinc-500 font-light lowercase normal-case leading-relaxed">
+                        Processed via <span className="font-bold text-zinc-700">Razorpay</span> (UPI, GooglePay, Cards, Netbanking).
+                      </div>
+                    )}
+                    <div className="bg-zinc-50 border border-zinc-150 p-3 rounded-xl text-center text-zinc-500 font-light lowercase normal-case leading-relaxed mt-2">
+                      <span className="font-bold text-zinc-850 uppercase tracking-widest text-[8px] block mb-1">🛡️ Refund Guarantee</span>
+                      100% money-back refund within 5 days if AI curation encounters issues.
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

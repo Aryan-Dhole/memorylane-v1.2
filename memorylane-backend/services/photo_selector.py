@@ -129,8 +129,16 @@ async def run_full_pipeline(
         start_idx = m["start_index"]
         moment_map[start_idx] = i
         
-    # 11. Run Vision Analysis pass in parallel
-    visual_analysis_tasks = [analyze_photo_visually(p) for p in sequenced_list]
+    # 11. Run Vision Analysis pass with controlled concurrency (e.g., max 3 at a time) to avoid API rate limits
+    sem = asyncio.Semaphore(3)
+    async def safe_analyze(path):
+        async with sem:
+            res = await analyze_photo_visually(path)
+            # Add a small delay between requests to respect rate limits
+            await asyncio.sleep(0.3)
+            return res
+            
+    visual_analysis_tasks = [safe_analyze(p) for p in sequenced_list]
     visual_analysis_results = await asyncio.gather(*visual_analysis_tasks)
     
     # 12. Run Sequential Caption Generation

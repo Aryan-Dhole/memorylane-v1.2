@@ -5,7 +5,10 @@ from botocore.exceptions import ClientError
 from botocore.config import Config
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load dotenv relative to the backend root directory
+services_dir = os.path.dirname(os.path.abspath(__file__))
+backend_dir = os.path.abspath(os.path.join(services_dir, ".."))
+load_dotenv(os.path.join(backend_dir, ".env"))
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState } from "react"
+import Link from "next/link"
 import { Copy, Check, MessageSquare } from "lucide-react"
 
 interface GalleryFooterProps {
@@ -91,8 +92,14 @@ export default function GalleryFooter({ slug, eventName, studioName, studioLogoU
       </div>
 
       {/* Credits block */}
-      <div className="text-[9px] font-mono uppercase tracking-widest text-zinc-650 border-t border-zinc-900 w-full pt-8 max-w-lg">
-        © {new Date().getFullYear()} MemoryLane Inc. All rights reserved.
+      <div className="text-[9px] font-mono uppercase tracking-widest text-zinc-550 border-t border-zinc-900 w-full pt-8 max-w-lg flex flex-wrap justify-center gap-4">
+        <span>© {new Date().getFullYear()} MemoryLane Inc. All rights reserved.</span>
+        <span className="text-zinc-800">|</span>
+        <Link href="/privacy" className="hover:text-zinc-300 transition-colors">Privacy</Link>
+        <Link href="/terms" className="hover:text-zinc-300 transition-colors">Terms</Link>
+        <Link href="/refunds" className="hover:text-zinc-300 transition-colors">Refunds</Link>
+        <Link href="/shipping" className="hover:text-zinc-300 transition-colors">Shipping</Link>
+        <Link href="/contact" className="hover:text-zinc-300 transition-colors">Contact</Link>
       </div>
     </footer>
   )

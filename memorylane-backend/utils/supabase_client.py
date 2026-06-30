@@ -3,7 +3,10 @@ import logging
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load dotenv relative to the backend root directory
+utils_dir = os.path.dirname(os.path.abspath(__file__))
+backend_dir = os.path.abspath(os.path.join(utils_dir, ".."))
+load_dotenv(os.path.join(backend_dir, ".env"))
 
 logger = logging.getLogger(__name__)
 

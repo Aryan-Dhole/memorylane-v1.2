@@ -3,6 +3,11 @@ import logging
 import os
 import datetime
 import uuid
+from dotenv import load_dotenv
+
+# Load dotenv relative to the backend root directory
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(backend_dir, ".env"))
 
 from utils.queue import get_queue
 from utils.supabase_client import supabase

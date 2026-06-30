@@ -451,15 +451,17 @@ export default function HomePage() {
       </section>
 
       {/* FOOTER */}
-      <footer className="py-16 px-6 border-t border-zinc-200/60 text-zinc-400 text-[10px] font-geist-mono uppercase tracking-widest flex flex-col md:flex-row justify-between items-center gap-4 z-10 relative bg-[#fafafa]">
+      <footer className="py-16 px-6 border-t border-zinc-200/60 text-zinc-400 text-[10px] font-geist-mono uppercase tracking-widest flex flex-col md:flex-row justify-between items-center gap-6 z-10 relative bg-[#fafafa]">
         <div className="flex items-center gap-4">
           <Logo className="w-6 h-6 opacity-70" />
           <span>© 2026 MEMORYLANE SYSTEM INC</span>
         </div>
-        <div className="flex gap-8">
-          <a href="#" className="hover:text-zinc-700 transition-colors">Privacy</a>
-          <a href="#" className="hover:text-zinc-700 transition-colors">Terms</a>
-          <a href="#" className="hover:text-zinc-700 transition-colors">Support</a>
+        <div className="flex flex-wrap gap-x-8 gap-y-2 justify-center">
+          <Link href="/privacy" className="hover:text-zinc-700 transition-colors">Privacy</Link>
+          <Link href="/terms" className="hover:text-zinc-700 transition-colors">Terms</Link>
+          <Link href="/refunds" className="hover:text-zinc-700 transition-colors">Refunds</Link>
+          <Link href="/shipping" className="hover:text-zinc-700 transition-colors">Shipping</Link>
+          <Link href="/contact" className="hover:text-zinc-700 transition-colors">Contact</Link>
         </div>
       </footer>
     </div>
