@@ -192,10 +192,25 @@ def get_trial_result(trial_id: str):
         elif status == "pending" and ai_status == "running":
             status = "processing"
             
+        photos = session.get("result_photos") or []
+        formatted_photos = []
+        for p in photos:
+            path_val = p.get("path") or ""
+            # Generate pre-signed URL if path is an S3 key
+            if path_val.startswith("uploads/") or path_val.startswith("faces/"):
+                download_url = s3_service.generate_download_url(path_val)
+            else:
+                download_url = path_val
+            
+            formatted_photos.append({
+                "path": download_url,
+                "caption": p.get("caption") or ""
+            })
+
         return {
             "status": status,
             "progress": progress,
-            "photos": session.get("result_photos") or [],
+            "photos": formatted_photos,
             "trial_id": trial_id,
             "expires_at": session["expires_at"]
         }

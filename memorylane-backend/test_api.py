@@ -100,5 +100,62 @@ class TestMemoryLanePipeline(unittest.TestCase):
             
         asyncio.run(run())
 
+    def test_trial_curation_worker(self):
+        """Verify that process_job handles trial jobs when order_id is None."""
+        from worker import process_job
+        from unittest.mock import patch, MagicMock, AsyncMock
+        import asyncio
+        
+        # Mock supabase client query response for photos
+        mock_photos_res = MagicMock()
+        mock_photos_res.data = [{"s3_key": "uploads/trial/mock_trial_id/photo_0.jpg"}]
+        
+        # We patch the supabase client table calls
+        with patch("worker.supabase") as mock_supabase, \
+             patch("worker.run_full_pipeline", new_callable=AsyncMock) as mock_pipeline:
+             
+            # Setup supabase mocks
+            mock_table = MagicMock()
+            mock_select = MagicMock()
+            mock_eq = MagicMock()
+            
+            mock_supabase.table.return_value = mock_table
+            mock_table.select.return_value = mock_select
+            mock_table.update.return_value = mock_table
+            mock_select.eq.return_value = mock_eq
+            mock_eq.execute.return_value = mock_photos_res
+            mock_table.eq.return_value = mock_table
+            mock_table.execute.return_value = MagicMock(data=[])
+            
+            # Setup pipeline mock
+            mock_pipeline.return_value = {
+                "selected_photos": [{"path": "uploads/trial/mock_trial_id/photo_0.jpg", "caption": "Mock caption", "chapter": 0}],
+                "face_clusters": [],
+                "chapters": [],
+                "processing_time_seconds": 1.5
+            }
+            
+            # Create a mock job
+            class MockJob:
+                def __init__(self, data):
+                    self.data = data
+            
+            job = MockJob({
+                "batch_id": "mock_trial_id",
+                "tier": "trial",
+                "book_title": "Trial Preview",
+                "caption_style": "poetic",
+                "language": "English"
+            })
+            
+            # Run process_job
+            asyncio.run(process_job(job))
+            
+            # Assertions
+            mock_pipeline.assert_called_once()
+            # Confirm supabase was updated for trial_sessions and photo_batches
+            mock_supabase.table.assert_any_call("trial_sessions")
+            mock_supabase.table.assert_any_call("photo_batches")
+
 if __name__ == "__main__":
     unittest.main()

@@ -3,14 +3,18 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
+  // Allow trial space paths without session guards
+  const isTrialRoute = req.nextUrl.pathname.startsWith('/create/trial')
+
+  if (isTrialRoute) {
+    return NextResponse.next()
+  }
+
   // Refresh the Supabase session using the modern getClaims() pattern
   const res = await updateSession(req)
 
   const protectedRoutes = ['/create', '/checkout', '/orders', '/dashboard']
   const isProtected = protectedRoutes.some(r => req.nextUrl.pathname.startsWith(r))
-
-  // Allow trial space paths without session guards
-  const isTrialRoute = req.nextUrl.pathname.startsWith('/create/trial')
 
   if (isProtected && !isTrialRoute) {
     // Check if user is authenticated by looking at the response cookies

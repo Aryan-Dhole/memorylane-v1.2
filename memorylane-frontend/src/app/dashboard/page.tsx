@@ -76,10 +76,18 @@ export default function UserDashboard() {
       }
 
       // Fetch dashboard galleries from API router which fetches correct status values
-      const res = await api.get("/gallery/dashboard/galleries")
-      if (res.data && res.data.galleries) {
-        setOrders(res.data.galleries)
-      } else {
+      let loaded = false
+      try {
+        const res = await api.get("/gallery/dashboard/galleries")
+        if (res.data && res.data.galleries && res.data.galleries.length > 0) {
+          setOrders(res.data.galleries)
+          loaded = true
+        }
+      } catch (apiErr) {
+        console.warn("Failed to fetch dashboard galleries via API, falling back to direct Supabase query:", apiErr)
+      }
+
+      if (!loaded) {
         // Fallback directly querying orders table
         const { data: userOrders, error } = await supabase
           .from("orders")
@@ -88,7 +96,11 @@ export default function UserDashboard() {
           .order("created_at", { ascending: false })
 
         if (!error && userOrders) {
-          setOrders(userOrders)
+          const mappedOrders = userOrders.map((o: any) => ({
+            ...o,
+            slug: o.event_slug
+          }))
+          setOrders(mappedOrders)
         }
       }
     } catch (err) {
@@ -456,9 +468,16 @@ export default function UserDashboard() {
                       )}
 
                       {isProcessing && (
-                        <div className="flex items-center gap-2 text-[10px] font-bold font-geist-mono uppercase text-amber-600 bg-amber-50 border border-amber-200 px-4 py-2.5 rounded-xl animate-pulse">
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>AI pipeline running...</span>
+                        <div className="flex items-center gap-3">
+                          <Link href={`/orders/${order.id}`}>
+                            <Button variant="outline" className="border-zinc-200 hover:bg-zinc-50 rounded-xl text-[9px] font-bold font-geist-mono uppercase tracking-wider h-10 px-4">
+                              Track Progress
+                            </Button>
+                          </Link>
+                          <div className="flex items-center gap-2 text-[10px] font-bold font-geist-mono uppercase text-amber-600 bg-amber-50 border border-amber-200 px-4 py-2.5 rounded-xl animate-pulse">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>AI pipeline running...</span>
+                          </div>
                         </div>
                       )}
                     </div>

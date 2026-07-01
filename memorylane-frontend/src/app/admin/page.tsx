@@ -42,16 +42,19 @@ export default function AdminDashboard() {
     e.preventDefault()
     if (safeCompare(passwordInput, "memorylane2026")) {
       setIsAuthenticated(true)
-      loadAdminOrders()
+      loadAdminOrders(passwordInput)
     } else {
       alert("Invalid admin access password!")
     }
   }
 
-  const loadAdminOrders = async () => {
+  const loadAdminOrders = async (pw?: string) => {
     setLoading(true)
     try {
-      const res = await api.get("/orders")
+      const activePw = pw || passwordInput
+      const res = await api.get("/orders", {
+        headers: { "X-Admin-Password": activePw }
+      })
       setOrders(res.data || [])
     } catch (err) {
       console.error("Failed to load admin queue:", err)
@@ -92,7 +95,9 @@ export default function AdminDashboard() {
     if (!selectedOrder) return
     setUpdatingStatus(true)
     try {
-      await api.put(`/orders/${selectedOrder.id}/status`, { status })
+      await api.put(`/orders/${selectedOrder.id}/status`, { status }, {
+        headers: { "X-Admin-Password": passwordInput }
+      })
       setOrders((prev) => 
         prev.map((ord) => (ord.id === selectedOrder.id ? { ...ord, status } : ord))
       )
@@ -112,7 +117,9 @@ export default function AdminDashboard() {
     }
     setRetriggeringPipeline(true)
     try {
-      await api.post(`/analyze/${selectedBatch.id}`)
+      await api.post(`/analyze/${selectedBatch.id}`, {}, {
+        headers: { "X-Admin-Password": passwordInput }
+      })
       alert("AI Curation pipeline successfully re-triggered!")
       fetchBatchDetails(selectedOrder.id)
       loadAdminOrders()
@@ -194,7 +201,7 @@ export default function AdminDashboard() {
             </div>
           </div>
           
-          <Button variant="outline" size="sm" onClick={loadAdminOrders} className="border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-650 rounded-full text-[10px] font-bold font-geist-mono uppercase tracking-widest px-5 shadow-sm">
+          <Button variant="outline" size="sm" onClick={() => loadAdminOrders()} className="border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-650 rounded-full text-[10px] font-bold font-geist-mono uppercase tracking-widest px-5 shadow-sm">
             <RefreshCw className="w-3.5 h-3.5 mr-2" />
             Refresh Queue
           </Button>

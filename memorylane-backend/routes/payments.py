@@ -195,14 +195,6 @@ def verify_payment(req: PaymentVerifyRequest, background_tasks: BackgroundTasks)
                     }
                     
                     queue.add("generate-book", job_data)
-                    
-                    if not queue.use_redis:
-                        from worker import process_job
-                        class FakeJob:
-                            def __init__(self, data):
-                                self.data = data
-                        background_tasks.add_task(process_job, FakeJob(job_data))
-                        logger.info("Triggered generate-book task directly via BackgroundTasks")
                         
         except Exception as e:
             logger.error("Supabase database transactions failed: %s", e)
@@ -302,14 +294,6 @@ def free_checkout(req: PaymentCreateRequest, background_tasks: BackgroundTasks, 
         }
         
         queue.add("generate-book", job_data)
-        
-        if not queue.use_redis:
-            from worker import process_job
-            class FakeJob:
-                def __init__(self, data):
-                    self.data = data
-            background_tasks.add_task(process_job, FakeJob(job_data))
-            logger.info("Triggered free gallery curation job directly via BackgroundTasks")
             
         return PaymentVerifyResponse(
             success=True,

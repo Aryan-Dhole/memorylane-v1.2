@@ -10,6 +10,8 @@ from models.schemas import (
 )
 from utils.supabase_client import supabase
 
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "memorylane2026")
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -81,16 +83,24 @@ def create_order(req: OrderCreateRequest, authorization: Optional[str] = Header(
         )
 
 @router.get("/{order_id}")
-def get_order(order_id: str):
+def get_order(order_id: str, authorization: Optional[str] = Header(None)):
     """
-    Retrieves the details of a specific order.
+    Retrieves the details of a specific order. Scoped to the owner.
     """
+    from utils.supabase_client import get_user_id_from_auth
+    user_id = get_user_id_from_auth(authorization)
+    
     try:
         res = supabase.table("orders").select("*").eq("id", order_id).execute()
         if res.data:
-            return res.data[0]
+            order = res.data[0]
+            if order["user_id"] != user_id:
+                raise HTTPException(status_code=403, detail="Not authorized to access this order.")
+            return order
         else:
             raise HTTPException(status_code=404, detail="Order not found in database.")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Failed to retrieve order details")
         return JSONResponse(
@@ -99,10 +109,12 @@ def get_order(order_id: str):
         )
 
 @router.get("")
-def list_orders(status: Optional[str] = None):
+def list_orders(status: Optional[str] = None, x_admin_password: Optional[str] = Header(None)):
     """
-    Lists orders, optionally filtered by status.
+    Lists orders, optionally filtered by status. Securely checks admin password.
     """
+    if not x_admin_password or x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Not authorized as administrator")
     try:
         query = supabase.table("orders").select("*")
         if status:
@@ -117,11 +129,21 @@ def list_orders(status: Optional[str] = None):
         )
 
 @router.put("/{order_id}/shipping")
-def update_shipping(order_id: str, req: OrderShippingUpdateRequest):
+def update_shipping(order_id: str, req: OrderShippingUpdateRequest, authorization: Optional[str] = Header(None)):
     """
-    Updates the shipping info for an order.
+    Updates the shipping info for an order. Scoped to the owner.
     """
+    from utils.supabase_client import get_user_id_from_auth
+    user_id = get_user_id_from_auth(authorization)
+    
     try:
+        # Check order ownership
+        ord_res = supabase.table("orders").select("user_id").eq("id", order_id).execute()
+        if not ord_res.data:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if ord_res.data[0]["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to update this order")
+            
         # Calculate mock estimated delivery (e.g. 5 days from now)
         est_delivery = (datetime.date.today() + datetime.timedelta(days=5)).isoformat()
         
@@ -139,6 +161,8 @@ def update_shipping(order_id: str, req: OrderShippingUpdateRequest):
             return res.data[0]
         else:
             raise HTTPException(status_code=404, detail="Order not found for shipping update.")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Failed to update shipping information")
         return JSONResponse(
@@ -147,10 +171,12 @@ def update_shipping(order_id: str, req: OrderShippingUpdateRequest):
         )
 
 @router.put("/{order_id}/status")
-def update_status(order_id: str, req: OrderUpdateStatusRequest):
+def update_status(order_id: str, req: OrderUpdateStatusRequest, x_admin_password: Optional[str] = Header(None)):
     """
-    Updates status of an order.
+    Updates status of an order. Securely checks admin password.
     """
+    if not x_admin_password or x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Not authorized as administrator")
     try:
         res = supabase.table("orders").update({"status": req.status}).eq("id", order_id).execute()
         if res.data:

@@ -73,6 +73,12 @@ To prevent cross-origin fetch failures:
 3. Update the `FRONTEND_URL` environment variable to match your exact Vercel production domain (e.g. `https://your-frontend-domain.vercel.app`). Do not append a trailing slash.
 4. Redeploy the backend to reload configurations.
 
+### D. Securing Admin Dashboard Access Credentials
+For safety and security:
+1. Make sure to customize the admin verification password on both components.
+2. In the backend variables, set `ADMIN_PASSWORD` (e.g. `my-production-secret-2026`).
+3. In the frontend file [src/app/admin/page.tsx](file:///c:/Users/aryan/OneDrive/Desktop/Up%20Stack/ML/memorylane-frontend/src/app/admin/page.tsx), locate the string `"memorylane2026"` around line 43, and replace it with the exact matching password you configured in your backend variables.
+
 ---
 
 ## 📈 Post-Deployment Performance & SEO Verification

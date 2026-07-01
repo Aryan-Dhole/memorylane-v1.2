@@ -1,5 +1,9 @@
 import logging
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
+import os
+from typing import Optional
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, Header
+
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "memorylane2026")
 
 from models.schemas import (
     AnalyzeRequest, AnalyzeResponse, AnalyzeStatusResponse, AnalyzeResultResponse, SelectedPhotoMetadata, ChapterMetadata
@@ -16,10 +20,12 @@ router = APIRouter()
 
 @router.post("/{batch_id}", response_model=AnalyzeResponse)
 @limiter.limit("5/minute")
-def run_analysis(request: Request, batch_id: str, req: AnalyzeRequest, background_tasks: BackgroundTasks):
+def run_analysis(request: Request, batch_id: str, req: AnalyzeRequest, background_tasks: BackgroundTasks, x_admin_password: Optional[str] = Header(None)):
     """
     Submits a background task to process the photo batch with the AI pipeline.
     """
+    if not x_admin_password or x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Not authorized as administrator")
     try:
         # 1. Fetch batch details from Supabase to verify it exists
         try:
@@ -42,15 +48,6 @@ def run_analysis(request: Request, batch_id: str, req: AnalyzeRequest, backgroun
         
         # Push job to queue
         queue.add("ai-pipeline", job_data)
-        
-        # 3. If running in-memory (no Redis), we trigger the background task immediately using FastAPI's BackgroundTasks
-        if not queue.use_redis:
-            from worker import process_job
-            class FakeJob:
-                def __init__(self, data):
-                    self.data = data
-            background_tasks.add_task(process_job, FakeJob(job_data))
-            logger.info("Triggered task processing directly via FastAPI BackgroundTasks (in-memory mode)")
             
         return AnalyzeResponse(job_id=batch_id, status="queued")
     except Exception as e:
@@ -134,7 +131,7 @@ def get_analysis_result(batch_id: str):
                     dom_emotion = vis_analysis.get("dominant_emotion") or "candid_unaware"
                     selected_photos.append(SelectedPhotoMetadata(
                         path=download_url,
-                        caption=p.get("caption") or "",
+                        caption=p.get("caption_edited") or p.get("caption_v2") or p.get("caption") or "",
                         chapter=p.get("chapter_index") or 0,
                         scene=p.get("scene_label") or "candid",
                         dominant_emotion=dom_emotion

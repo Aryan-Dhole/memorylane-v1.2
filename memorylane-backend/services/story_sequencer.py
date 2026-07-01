@@ -168,7 +168,9 @@ async def detect_moments(
             if gemini_key and "mock" not in gemini_key:
                 from google import genai
                 client = genai.Client(api_key=gemini_key)
-                response = client.models.generate_content(
+                import asyncio
+                response = await asyncio.to_thread(
+                    client.models.generate_content,
                     model='gemini-2.5-flash',
                     contents=[prompt]
                 )

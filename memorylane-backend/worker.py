@@ -50,6 +50,78 @@ async def process_job(job):
         except Exception as e:
             logger.error("DB error fetching batch_id from order: %s", e)
             
+    tier = job.data.get("tier", "free").lower()
+    
+    if tier == "trial":
+        logger.info("Processing trial session curation: Batch ID: %s", batch_id)
+        # 1. Update status to running
+        try:
+            supabase.table("photo_batches").update({
+                "ai_status": "running",
+                "ai_progress": 20
+            }).eq("id", batch_id).execute()
+            supabase.table("trial_sessions").update({
+                "status": "processing"
+            }).eq("id", batch_id).execute()
+        except Exception as e:
+            logger.error("DB error updating trial status: %s", e)
+
+        # 2. Retrieve batch S3 keys
+        image_paths = []
+        try:
+            photos = supabase.table("photos").select("s3_key").eq("batch_id", batch_id).execute()
+            if photos.data:
+                image_paths = [p["s3_key"] for p in photos.data]
+        except Exception as e:
+            logger.error("DB error fetching photos: %s", e)
+
+        if not image_paths:
+            logger.warning("No photos uploaded for trial batch %s", batch_id)
+            return
+
+        # 3. Run AI Pipeline
+        try:
+            result = await asyncio.wait_for(
+                run_full_pipeline(
+                    image_paths=image_paths,
+                    target_count=10,
+                    event_type=job.data.get("event_type") or "wedding",
+                    caption_style=job.data.get("caption_style") or "poetic",
+                    language=job.data.get("language") or "English",
+                    event_name=job.data.get("book_title") or "Trial Preview",
+                    order_id="trial"
+                ),
+                timeout=600.0
+            )
+
+            # 4. Save results back to trial_sessions
+            selected_photos = result.get("selected_photos", [])
+            supabase.table("trial_sessions").update({
+                "status": "ready",
+                "result_photos": selected_photos
+            }).eq("id", batch_id).execute()
+
+            # 5. Update photo batch status
+            supabase.table("photo_batches").update({
+                "ai_status": "completed",
+                "ai_progress": 100,
+                "pipeline_result": result
+            }).eq("id", batch_id).execute()
+            logger.info("Successfully completed trial session curation. Batch ID: %s", batch_id)
+        except Exception as e:
+            logger.exception("Failed to run trial curation pipeline: %s", e)
+            try:
+                supabase.table("photo_batches").update({
+                    "ai_status": "failed",
+                    "ai_progress": 0
+                }).eq("id", batch_id).execute()
+                supabase.table("trial_sessions").update({
+                    "status": "failed"
+                }).eq("id", batch_id).execute()
+            except Exception:
+                pass
+        return
+
     if not order_id or not batch_id:
         logger.error("Failed to run task: missing order_id or batch_id")
         return
@@ -163,6 +235,7 @@ async def process_job(job):
             supabase.table("photos").update({
                 "is_selected": True,
                 "sequence_index": idx,
+                "chapter_index": m_idx,
                 "caption_v2": photo["caption"],
                 "visual_analysis": photo["visual_analysis"],
                 "face_cluster_ids": face_ids,

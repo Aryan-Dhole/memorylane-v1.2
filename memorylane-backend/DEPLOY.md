@@ -7,7 +7,7 @@ This guide provides step-by-step instructions to deploy the FastAPI application 
 ## 📋 Infrastructure Requirements
 
 To run MemoryLane in production, you will need active accounts with:
-1. **Railway**: Hosts the FastAPI web dyno and Redis queue.
+1. **Railway**: Hosts the FastAPI web service and Redis queue.
 2. **Supabase**: Hosts the PostgreSQL database, Authentication provider, and Realtime notification client.
 3. **AWS (S3 & IAM)**: Houses high-resolution image uploads.
 4. **Razorpay**: E-commerce payment collections.
@@ -88,6 +88,7 @@ Configure these keys under the **Variables** tab of the `memorylane-backend` ser
 | :--- | :--- | :--- |
 | `ENV` | Application environment status | `production` (enforces strict CORS rules) |
 | `PORT` | Web server port (Railway default) | `8000` |
+| `ADMIN_PASSWORD` | Shared secret to secure admin control panel | `memorylane2026` (Change to a strong secret in production) |
 | `FRONTEND_URL` | Production web application address | `https://memorylane.vercel.app` (no trailing slash) |
 | `SUPABASE_URL` | Supabase API connection URL | `https://[project-id].supabase.co` |
 | `SUPABASE_ANON_KEY` | Supabase anon key | Retrieve from settings -> API |
@@ -97,7 +98,7 @@ Configure these keys under the **Variables** tab of the `memorylane-backend` ser
 | `AWS_REGION` | S3 bucket region code | `ap-south-1` (Mumbai) |
 | `S3_BUCKET_NAME` | Dedicated S3 bucket name | `memorylane-photos` |
 | `GEMINI_API_KEY` | Google AI Studio Key | Used for primary image description tasks |
-| `ANTHROPIC_API_KEY` | Claude API key | Fallback option for text sequencing |
+| `ANTHROPIC_API_KEY` | Claude API key (Fallback) | Fallback option for text sequencing |
 | `RAZORPAY_KEY_ID` | Razorpay Merchant key | Format: `rzp_live_...` or `rzp_test_...` |
 | `RAZORPAY_KEY_SECRET` | Razorpay Merchant secret key | Kept private |
 | `RESEND_API_KEY` | Resend API client key | Format: `re_...` |
@@ -125,3 +126,23 @@ Visit your generated Railway backend URL at the `/health` path (e.g. `https://yo
 
 ### 3. Connect the Frontend
 Provide the frontend service deployment (Vercel) with the backend Railway domain as `NEXT_PUBLIC_API_URL`.
+
+---
+
+## 🛠️ Step 5: Local Testing instructions
+Before deploying live, you can simulate the production environment locally:
+1. Provision a local Redis server or let the application fall back to the in-memory queue.
+2. Spin up the backend server:
+   ```bash
+   pip install -r requirements.txt
+   uvicorn main:app --reload
+   ```
+3. Run the worker thread concurrently in another terminal window:
+   ```bash
+   python worker.py
+   ```
+4. Run the unit test suite:
+   ```bash
+   python -m unittest test_api.py
+   ```
+
