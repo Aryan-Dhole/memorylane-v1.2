@@ -24,7 +24,7 @@ class UploadConfirmResponse(BaseModel):
     total_confirmed: int
 
 class AnalyzeRequest(BaseModel):
-    book_size: str  # "small", "medium", "large", "xl"
+    book_size: str = "medium"  # "small", "medium", "large", "xl"
     caption_style: str = "poetic"  # "poetic", "factual", "playful", "minimal"
     language: str = "English"
 

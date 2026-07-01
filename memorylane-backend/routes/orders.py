@@ -119,7 +119,7 @@ def list_orders(status: Optional[str] = None, x_admin_password: Optional[str] = 
         query = supabase.table("orders").select("*")
         if status:
             query = query.eq("status", status)
-        res = query.order("created_at", descending=True).execute()
+        res = query.order("created_at", desc=True).execute()
         return res.data
     except Exception as e:
         logger.exception("Failed to retrieve list of orders")

@@ -36,6 +36,7 @@ function UploadAndAIFlowContent() {
   const [orderStatus, setOrderStatus] = useState<string>("draft")
   const [eventSlug, setEventSlug] = useState<string>("")
   const [isProcessingFree, setIsProcessingFree] = useState(false)
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false)
 
   // Checkout Recipient Details
   const [shipping, setShipping] = useState({
@@ -215,6 +216,8 @@ function UploadAndAIFlowContent() {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
 
+      setIsVerifyingPayment(true)
+
       // Update recipient contact info
       await api.put(`/orders/${orderId}/shipping`, {
         shipping_name: shipping.name,
@@ -238,7 +241,13 @@ function UploadAndAIFlowContent() {
         order_id: rzpOrderId,
         name: "MemoryLane",
         description: `${eventName} Gallery Edition`,
+        modal: {
+          ondismiss: () => {
+            setIsVerifyingPayment(false)
+          }
+        },
         handler: async (response: any) => {
+          setIsVerifyingPayment(true)
           try {
             await api.post("/payments/verify", response)
             setOrderStatus("paid")
@@ -246,6 +255,8 @@ function UploadAndAIFlowContent() {
           } catch (e) {
             setOrderStatus("paid")
             setCurrentStep(2)
+          } finally {
+            setIsVerifyingPayment(false)
           }
         },
         prefill: {
@@ -264,21 +275,30 @@ function UploadAndAIFlowContent() {
         })
         setOrderStatus("paid")
         setCurrentStep(2)
+        setIsVerifyingPayment(false)
         return
       }
 
       const rzp = new (window as any).Razorpay(options)
+      setIsVerifyingPayment(false)
       rzp.open()
 
     } catch (err) {
       console.error("Checkout process failed:", err)
       setOrderStatus("paid")
       setCurrentStep(2)
+      setIsVerifyingPayment(false)
     }
   }
 
   return (
     <div className="min-h-screen bg-[#fafafa] text-zinc-900 font-sans py-40 px-4 relative dot-grid-light selection:bg-zinc-900 selection:text-white">
+      {isVerifyingPayment && (
+        <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-zinc-900 select-none">
+          <Loader2 className="w-8 h-8 animate-spin text-zinc-950 mb-3" />
+          <span className="text-[10px] font-bold font-geist-mono uppercase tracking-widest text-zinc-500 animate-pulse">Securing Payment & Compiling Layouts...</span>
+        </div>
+      )}
       <div className="max-w-5xl mx-auto relative z-10">
 
         {/* Exit back navigation */}

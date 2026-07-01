@@ -366,7 +366,7 @@ async def upload_guest_photo(
                         mom_id = new_m.data[0]["id"]
                 
                 # Retrieve current max sequence index
-                seq_res = supabase.table("photos").select("sequence_index").eq("batch_id", batch_id).order("sequence_index", descending=True).limit(1).execute()
+                seq_res = supabase.table("photos").select("sequence_index").eq("batch_id", batch_id).order("sequence_index", desc=True).limit(1).execute()
                 next_seq = (seq_res.data[0]["sequence_index"] + 1) if seq_res.data else 0
                 
                 supabase.table("photos").insert({
@@ -435,7 +435,7 @@ def get_user_dashboard_galleries(authorization: Optional[str] = Header(None)):
     events_res = supabase.table("orders") \
         .select("*") \
         .eq("user_id", user_id) \
-        .order("created_at", descending=True) \
+        .order("created_at", desc=True) \
         .execute()
         
     galleries = []

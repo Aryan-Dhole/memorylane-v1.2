@@ -359,6 +359,8 @@ export default function AdminDashboard() {
                       <span className="text-zinc-700">
                         {selectedOrder.expires_at 
                           ? new Date(selectedOrder.expires_at).toLocaleDateString("en-IN")
+                          : selectedOrder.tier?.toLowerCase() === "free" ? "7 days after curation"
+                          : selectedOrder.tier?.toLowerCase() === "basic" ? "365 days after curation"
                           : "Never (Premium)"
                         }
                       </span>

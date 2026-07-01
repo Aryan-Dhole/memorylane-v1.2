@@ -91,15 +91,21 @@ export default function UserDashboard() {
         // Fallback directly querying orders table
         const { data: userOrders, error } = await supabase
           .from("orders")
-          .select("*")
+          .select("*, photo_batches(id, pipeline_result, total_uploaded)")
           .eq("user_id", session.user.id)
           .order("created_at", { ascending: false })
 
         if (!error && userOrders) {
-          const mappedOrders = userOrders.map((o: any) => ({
-            ...o,
-            slug: o.event_slug
-          }))
+          const mappedOrders = userOrders.map((o: any) => {
+            const batch = o.photo_batches?.[0]
+            const selectedPhotos = batch?.pipeline_result?.selected_photos || []
+            const photoCount = selectedPhotos.length || batch?.total_uploaded || 0
+            return {
+              ...o,
+              slug: o.event_slug,
+              photo_count: photoCount
+            }
+          })
           setOrders(mappedOrders)
         }
       }
