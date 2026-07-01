@@ -3,10 +3,10 @@ import { motion } from "framer-motion"
 
 export default function Logo({ className = "w-8 h-8" }: { className?: string }) {
   return (
-    <svg 
-      viewBox="0 0 100 100" 
-      fill="none" 
-      xmlns="http://www.w3.org/2000/svg" 
+    <svg
+      viewBox="0 0 100 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
       <defs>
@@ -23,29 +23,29 @@ export default function Logo({ className = "w-8 h-8" }: { className?: string }) 
       </defs>
 
       {/* Rotating outer ring */}
-      <motion.circle 
-        cx="50" 
-        cy="50" 
-        r="44" 
-        stroke="url(#titaniumGlow)" 
+      <motion.circle
+        cx="50"
+        cy="50"
+        r="44"
+        stroke="url(#titaniumGlow)"
         strokeWidth="4.5"
         strokeDasharray="50 30 15 65"
         strokeLinecap="round"
         initial={{ rotate: 0 }}
         animate={{ rotate: 360 }}
-        transition={{ 
-          duration: 16, 
-          ease: "linear", 
-          repeat: Infinity 
+        transition={{
+          duration: 16,
+          ease: "linear",
+          repeat: Infinity
         }}
       />
-      
+
       {/* Dashed secondary indicator ring */}
       <circle cx="50" cy="50" r="32" stroke="#d4d4d8" strokeWidth="1" strokeDasharray="3 3" />
 
       {/* Central Solid Core */}
       <circle cx="50" cy="50" r="10" fill="url(#coreGlow)" />
-      
+
       {/* Precision crosshair pointers */}
       <line x1="50" y1="12" x2="50" y2="20" stroke="#71717a" strokeWidth="1.5" strokeLinecap="round" />
       <line x1="50" y1="80" x2="50" y2="88" stroke="#71717a" strokeWidth="1.5" strokeLinecap="round" />
