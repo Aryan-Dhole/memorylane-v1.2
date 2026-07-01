@@ -46,8 +46,9 @@ async def lifespan(app: FastAPI):
     queue = get_queue("ai-pipeline")
     if not queue.use_redis:
         import asyncio
-        from worker import process_job, cleanup_expired_trials_task
+        from worker import process_job, cleanup_expired_trials_task, handle_auto_publish
         queue.process("ai-pipeline", process_job)
+        queue.process("auto-publish", handle_auto_publish)
         asyncio.create_task(queue.run())
         asyncio.create_task(cleanup_expired_trials_task())
         logger.info("Redis is offline. Started in-app queue worker & trial cleaner background tasks.")

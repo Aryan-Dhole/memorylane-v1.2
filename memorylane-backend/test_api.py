@@ -85,7 +85,7 @@ class TestMemoryLanePipeline(unittest.TestCase):
 
     def test_gemini_captioning_fallback(self):
         """Verify Gemini fallback behavior in caption generator."""
-        from services.caption_generator import generate_caption
+        from services.caption_generator import generate_single_caption
         import asyncio
         
         # Test mock fallback when no key is configured
@@ -93,7 +93,9 @@ class TestMemoryLanePipeline(unittest.TestCase):
         os.environ["ANTHROPIC_API_KEY"] = "mock_anthropic_key"
         
         async def run():
-            caption = await generate_caption("test_img.jpg", "wedding", "poetic", "English")
+            context = {"visual_analysis": {}, "position_in_chapter": 0, "chapter_size": 1}
+            event_context = {"event_name": "Test Event", "event_type": "wedding", "caption_style": "poetic", "language": "English"}
+            caption = await generate_single_caption("test_img.jpg", context, event_context)
             self.assertTrue(len(caption) > 0, "Fallback mock caption should be generated")
             
         asyncio.run(run())

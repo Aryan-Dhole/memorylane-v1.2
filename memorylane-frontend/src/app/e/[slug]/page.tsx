@@ -61,6 +61,7 @@ export default function GalleryPage({ params }: PageProps) {
   const [gallery, setGallery] = useState<GalleryData | null>(null)
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState("")
+  const [isReviewPending, setIsReviewPending] = useState(false)
   
   // Filtering state
   const [activeCluster, setActiveCluster] = useState<number | null>(null)
@@ -76,6 +77,10 @@ export default function GalleryPage({ params }: PageProps) {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
       const res = await fetch(`${apiBase}/gallery/${slug}`)
       if (!res.ok) {
+        if (res.status === 403) {
+          setIsReviewPending(true)
+          throw new Error("This gallery isn't live yet. The creator is putting the finishing touches on it. Check back soon.")
+        }
         if (res.status === 404) {
           throw new Error("This event gallery could not be found.")
         }
@@ -200,9 +205,18 @@ export default function GalleryPage({ params }: PageProps) {
     return (
       <div className="w-full h-screen bg-[#0a0a0f] flex flex-col items-center justify-center gap-8 text-center px-6 selection:bg-[#c9a96e] selection:text-[#0a0a0f] font-sans">
         <h1 className="text-3xl font-serif font-black text-[#c9a96e]">MemoryLane</h1>
-        <p className="text-xs md:text-sm font-light text-zinc-500 max-w-sm leading-relaxed">
-          {errorMsg || "This event gallery is currently unavailable."}
-        </p>
+        <div className="text-xs md:text-sm font-light text-zinc-400 max-w-sm leading-relaxed">
+          {isReviewPending ? (
+            <div className="space-y-3">
+              <span className="block text-[#c9a96e] font-serif font-black text-lg mb-2">✨ Under Curation Review</span>
+              <p>This gallery isn't live yet.</p>
+              <p>The creator is putting the finishing touches on it.</p>
+              <p>Check back soon.</p>
+            </div>
+          ) : (
+            <p>{errorMsg || "This event gallery is currently unavailable."}</p>
+          )}
+        </div>
         <a 
           href="/" 
           className="inline-flex items-center bg-[#faf9f7] text-[#0a0a0f] hover:bg-[#c9a96e] font-mono text-[10px] font-bold uppercase tracking-widest py-4 px-8 rounded-full shadow-lg transition-all"

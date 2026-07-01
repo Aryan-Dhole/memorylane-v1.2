@@ -10,7 +10,7 @@ from services.face_detector import detect_faces, cluster_faces_in_batch, extract
 from services.duplicate_remover import remove_duplicates, cluster_by_time
 from services.aesthetic_scorer import score_aesthetic
 from services.story_sequencer import sequence_photos, detect_moments, classify_scene_mock
-from services.caption_generator import analyze_photo_visually, generate_captions_sequential
+from services.caption_generator import analyze_photo_visually, generate_captions_batched
 
 logger = logging.getLogger(__name__)
 
@@ -33,22 +33,39 @@ async def run_full_pipeline(
     quality_results_list = await asyncio.gather(*quality_tasks)
     quality_results = {path: res for path, res in zip(image_paths, quality_results_list)}
     
-    # 2. Reject low quality or too low resolution
+    # 2. Reject explicit low quality or too low resolution
     surviving_quality = [path for path in image_paths if not quality_results[path]["reject"]]
     if not surviving_quality:
         surviving_quality = image_paths
         
-    # 3. Run face detector on surviving images in parallel
+    # EARLY REJECTION: Reject bottom 40% of surviving photos by quality score
+    # (since face detection and aesthetic scoring are expensive)
+    if len(surviving_quality) > 3:
+        scores = [quality_results[p]["final_quality_score"] for p in surviving_quality]
+        sorted_scores = sorted(scores)
+        cutoff_idx = int(len(sorted_scores) * 0.4)
+        quality_cutoff = sorted_scores[cutoff_idx]
+        surviving_quality = [p for p in surviving_quality if quality_results[p]["final_quality_score"] >= quality_cutoff]
+        logger.info("Quality cutoff filter (bottom 40% rejected): kept %d of %d photos", len(surviving_quality), len(image_paths))
+
+    # 3 & 4. Run face detector AND aesthetic scorer on surviving quality images in parallel
     face_tasks = [asyncio.to_thread(detect_faces, path) for path in surviving_quality]
-    face_results_list = await asyncio.gather(*face_tasks)
-    face_results = {path: res for path, res in zip(surviving_quality, face_results_list)}
+    aesthetic_tasks = [asyncio.to_thread(score_aesthetic, path) for path in surviving_quality]
     
-    # 4. Perform face clustering across the batch
+    face_results_list, aesthetic_results_list = await asyncio.gather(
+        asyncio.gather(*face_tasks),
+        asyncio.gather(*aesthetic_tasks)
+    )
+    
+    face_results = {path: res for path, res in zip(surviving_quality, face_results_list)}
+    aesthetic_results = {path: res for path, res in zip(surviving_quality, aesthetic_results_list)}
+    
+    # 5. Perform face clustering across the batch
     clustering_res = cluster_faces_in_batch(surviving_quality)
     face_clusters = clustering_res["clusters"]
     key_face_clusters = clustering_res["key_faces"]
     
-    # 5. Remove duplicates and perform time-based scene clustering
+    # 6. Remove duplicates and perform time-based scene clustering
     surviving_dedup = remove_duplicates(surviving_quality, quality_results)
     time_clustering_res = cluster_by_time(surviving_dedup, window_minutes=5)
     time_clusters = time_clustering_res["clusters"]
@@ -62,11 +79,6 @@ async def run_full_pipeline(
         for i, path in enumerate(paths):
             all_timestamps[path] = (dt + datetime.timedelta(seconds=i)).isoformat()
             
-    # 6. Run aesthetic scorer on surviving deduped images in parallel
-    aesthetic_tasks = [asyncio.to_thread(score_aesthetic, path) for path in surviving_dedup]
-    aesthetic_results_list = await asyncio.gather(*aesthetic_tasks)
-    aesthetic_results = {path: res for path, res in zip(surviving_dedup, aesthetic_results_list)}
-    
     # 7. Compute final ranking score for each image
     final_ranks = {}
     for path in surviving_dedup:
@@ -161,7 +173,7 @@ async def run_full_pipeline(
         "caption_style": caption_style,
         "chapters": moments_dict
     }
-    captions = await generate_captions_sequential(photos_for_captions, event_context)
+    captions = await generate_captions_batched(photos_for_captions, event_context)
     
     # 13. Crop and upload face thumbnails for key clusters
     face_crops_s3 = await extract_and_save_face_crops(order_id, face_clusters)

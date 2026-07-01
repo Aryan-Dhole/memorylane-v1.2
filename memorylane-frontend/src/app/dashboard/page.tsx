@@ -13,16 +13,27 @@ import {
   ArrowRight,
   LogOut,
   ExternalLink,
-  Sliders,
-  Users,
   Camera,
   Layers,
   Save,
-  Loader2
+  Loader2,
+  Eye,
+  AlertTriangle
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Logo from "@/components/logo"
 import { Input } from "@/components/ui/input"
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; text: string; border: string }> = {
+  draft: { label: 'Draft', color: 'gray', bg: 'bg-zinc-50', text: 'text-zinc-500', border: 'border-zinc-200' },
+  paid: { label: 'Payment Confirmed', color: 'blue', bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-150' },
+  processing: { label: 'AI Creating Gallery...', color: 'amber', bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-150' },
+  review_ready: { label: 'Ready to Review', color: 'purple', bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-150' },
+  published: { label: 'Live', color: 'green', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-100' },
+  failed: { label: 'Processing Failed', color: 'red', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-100' },
+  refunded: { label: 'Refunded', color: 'gray', bg: 'bg-zinc-100', text: 'text-zinc-500', border: 'border-zinc-200' },
+  expired: { label: 'Expired', color: 'gray', bg: 'bg-zinc-100', text: 'text-zinc-400', border: 'border-zinc-200' }
+}
 
 export default function UserDashboard() {
   const router = useRouter()
@@ -37,6 +48,9 @@ export default function UserDashboard() {
   const [studioWebsite, setStudioWebsite] = useState("")
   const [studioLocation, setStudioLocation] = useState("")
   const [savingProfile, setSavingProfile] = useState(false)
+
+  // Countdown timers state for review_ready galleries
+  const [countdowns, setCountdowns] = useState<Record<string, string>>({})
 
   const loadDashboard = async () => {
     try {
@@ -61,15 +75,21 @@ export default function UserDashboard() {
         setStudioLocation(prof.studio_location || "")
       }
 
-      // Query orders table
-      const { data: userOrders, error } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .order("created_at", { ascending: false })
+      // Fetch dashboard galleries from API router which fetches correct status values
+      const res = await api.get("/gallery/dashboard/galleries")
+      if (res.data && res.data.galleries) {
+        setOrders(res.data.galleries)
+      } else {
+        // Fallback directly querying orders table
+        const { data: userOrders, error } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .order("created_at", { ascending: false })
 
-      if (!error && userOrders) {
-        setOrders(userOrders)
+        if (!error && userOrders) {
+          setOrders(userOrders)
+        }
       }
     } catch (err) {
       console.error("Dashboard data load failed:", err)
@@ -81,6 +101,30 @@ export default function UserDashboard() {
   useEffect(() => {
     loadDashboard()
   }, [])
+
+  // Timer tick for auto-publish deadlines
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const newCountdowns: Record<string, string> = {}
+      orders.forEach(o => {
+        if (o.status === "review_ready" && o.review_deadline) {
+          const deadline = new Date(o.review_deadline).getTime()
+          const now = new Date().getTime()
+          const diff = deadline - now
+          if (diff <= 0) {
+            newCountdowns[o.id] = "auto-publishing..."
+          } else {
+            const hours = Math.floor(diff / (1000 * 60 * 60))
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+            newCountdowns[o.id] = `${hours}h ${minutes}m`
+          }
+        }
+      })
+      setCountdowns(newCountdowns)
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [orders])
 
   const handleLogout = async () => {
     const confirmLogout = window.confirm("Are you sure you want to log out of your MemoryLane account?")
@@ -134,10 +178,13 @@ export default function UserDashboard() {
   }
 
   const totalGalleries = orders.length
-  const completedGalleries = orders.filter(o => o.status === "ready").length
+  const completedGalleries = orders.filter(o => o.status === "published").length
   const totalViews = orders.reduce((sum, o) => sum + (o.view_count || 0), 0)
 
   const displayName = profile?.name || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split("@")[0] || "Memory Curator"
+
+  // Get first review-ready order for urgent dashboard banner
+  const urgentReviewOrder = orders.find(o => o.status === "review_ready")
 
   return (
     <div className="min-h-screen bg-[#FAFAF8] text-zinc-900 font-sans py-24 px-6 md:px-12 selection:bg-zinc-900 selection:text-white">
@@ -294,13 +341,39 @@ export default function UserDashboard() {
           </div>
         </div>
 
+        {/* Urgent Review Banner if any review_ready orders exist */}
+        {urgentReviewOrder && (
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-purple-50 border border-purple-200/80 rounded-3xl p-6 shadow-premium flex flex-col md:flex-row md:items-center justify-between gap-6"
+          >
+            <div className="space-y-1">
+              <span className="bg-purple-100 text-purple-800 text-[8.5px] font-bold font-geist-mono uppercase tracking-widest px-2.5 py-0.5 rounded-full border border-purple-200">
+                Action Required
+              </span>
+              <h4 className="text-lg font-serif font-black text-purple-950 mt-1">
+                🎉 Your "{urgentReviewOrder.event_name}" gallery is ready!
+              </h4>
+              <p className="text-xs text-purple-700 leading-relaxed font-light font-geist-mono">
+                Review captions, group clusters, and publish it now. Auto-publishes in <strong className="font-bold">{countdowns[urgentReviewOrder.id] || "24 hours"}</strong> if no action is taken.
+              </p>
+            </div>
+            <Link href={`/dashboard/gallery/${urgentReviewOrder.slug}/review`}>
+              <Button className="bg-purple-600 hover:bg-purple-700 text-white rounded-full px-6 py-5 text-[10px] font-bold uppercase tracking-widest font-geist-mono shadow-md whitespace-nowrap">
+                Review Now →
+              </Button>
+            </Link>
+          </motion.div>
+        )}
+
         {/* Order History */}
         <div className="space-y-6">
           <h3 className="text-sm font-bold font-geist-mono uppercase tracking-wider text-zinc-400">My Galleries</h3>
 
           {orders.length === 0 ? (
             <div className="bg-white border border-zinc-200/80 rounded-[32px] p-12 text-center space-y-4">
-              <Users className="w-8 h-8 text-zinc-350 mx-auto" />
+              <Layers className="w-8 h-8 text-zinc-350 mx-auto" />
               <div className="space-y-1">
                 <h4 className="text-sm font-bold text-zinc-850">No galleries found</h4>
                 <p className="text-zinc-400 text-xs font-light max-w-xs mx-auto leading-relaxed">
@@ -316,9 +389,18 @@ export default function UserDashboard() {
           ) : (
             <div className="space-y-4">
               {orders.map((order) => {
-                const isReady = order.status === "ready"
+                const isPublished = order.status === "published"
                 const isDraft = order.status === "draft"
                 const isProcessing = order.status === "processing" || order.status === "paid"
+                const isReviewReady = order.status === "review_ready"
+
+                const config = STATUS_CONFIG[order.status] || {
+                  label: order.status,
+                  color: 'gray',
+                  bg: 'bg-zinc-50',
+                  text: 'text-zinc-500',
+                  border: 'border-zinc-200'
+                }
 
                 return (
                   <motion.div
@@ -328,11 +410,8 @@ export default function UserDashboard() {
                   >
                     <div className="space-y-2">
                       <div className="flex items-center gap-3">
-                        <span className={`text-[8.5px] font-bold font-geist-mono uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${isReady ? "bg-emerald-50 border-emerald-100 text-emerald-800" :
-                          isDraft ? "bg-zinc-150 border-zinc-200 text-zinc-600" :
-                            "bg-amber-50 border-amber-100 text-amber-800 animate-pulse"
-                          }`}>
-                          {order.status}
+                        <span className={`text-[8.5px] font-bold font-geist-mono uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${config.bg} ${config.text} ${config.border} ${isProcessing ? "animate-pulse" : ""}`}>
+                          {config.label}
                         </span>
                         <span className="text-[10px] font-bold font-geist-mono text-zinc-400 uppercase tracking-widest">{order.tier} Edition</span>
                       </div>
@@ -340,16 +419,18 @@ export default function UserDashboard() {
                         {order.event_name || order.book_title || "My Event Gallery"}
                       </h4>
                       <div className="flex items-center gap-4 text-[10px] text-zinc-400 font-geist-mono uppercase font-medium">
-                        <span>{new Date(order.created_at).toLocaleDateString()}</span>
+                        <span>{order.created_at ? new Date(order.created_at).toLocaleDateString() : "Just created"}</span>
+                        <span>•</span>
+                        <span>{order.photo_count || 0} Photos</span>
                         <span>•</span>
                         <span>{order.view_count || 0} Views</span>
                       </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3 md:self-end">
-                      {isReady && order.event_slug && (
+                      {isPublished && order.slug && (
                         <>
-                          <Link href={`/e/${order.event_slug}`} target="_blank">
+                          <Link href={`/e/${order.slug}`} target="_blank">
                             <Button variant="outline" className="border-zinc-200 hover:bg-zinc-50 rounded-xl text-[9px] font-bold font-geist-mono uppercase tracking-wider h-10 px-4">
                               <ExternalLink className="w-3.5 h-3.5 mr-2" />
                               Open Gallery
@@ -358,8 +439,16 @@ export default function UserDashboard() {
                         </>
                       )}
 
+                      {isReviewReady && order.slug && (
+                        <Link href={`/dashboard/gallery/${order.slug}/review`}>
+                          <Button className="bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[9px] font-bold font-geist-mono uppercase tracking-wider h-10 px-5 shadow-md">
+                            Review Now →
+                          </Button>
+                        </Link>
+                      )}
+
                       {isDraft && (
-                        <Link href={`/create/upload?type=${order.book_type}&tier=${order.tier}&event_name=${encodeURIComponent(order.event_name || 'My Event')}&event_date=${order.event_date || ''}&event_location=${encodeURIComponent(order.event_location || '')}`}>
+                        <Link href={`/create/upload?type=${order.book_type || 'classic'}&tier=${order.tier}&event_name=${encodeURIComponent(order.event_name || 'My Event')}&event_date=${order.event_date || ''}&event_location=${encodeURIComponent(order.event_location || '')}`}>
                           <Button className="bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-xl text-[9px] font-bold font-geist-mono uppercase tracking-wider h-10 px-5 shadow-md">
                             Resume upload
                           </Button>
@@ -367,12 +456,10 @@ export default function UserDashboard() {
                       )}
 
                       {isProcessing && (
-                        <Link href={`/orders/${order.id}`}>
-                          <Button variant="outline" className="border-amber-200 hover:bg-amber-50/50 rounded-xl text-[9px] font-bold font-geist-mono uppercase tracking-wider h-10 px-4 text-amber-800">
-                            <Clock className="w-3.5 h-3.5 mr-2 animate-spin" />
-                            Track AI progress
-                          </Button>
-                        </Link>
+                        <div className="flex items-center gap-2 text-[10px] font-bold font-geist-mono uppercase text-amber-600 bg-amber-50 border border-amber-200 px-4 py-2.5 rounded-xl animate-pulse">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>AI pipeline running...</span>
+                        </div>
                       )}
                     </div>
                   </motion.div>

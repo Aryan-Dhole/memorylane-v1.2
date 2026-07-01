@@ -505,3 +505,33 @@ async def generate_captions_sequential(photos: list, event_context: dict) -> lis
         await asyncio.sleep(0.05)
         
     return captions
+
+async def generate_captions_batched(photos: list, event_context: dict) -> list:
+    """
+    Batched caption generation loop running batches of 5 in parallel to optimize pipeline speed.
+    """
+    BATCH_SIZE = 5
+    all_captions = []
+    
+    for i in range(0, len(photos), BATCH_SIZE):
+        batch = photos[i:i + BATCH_SIZE]
+        
+        # Pass previous caption for context (use last caption of previous batch)
+        prev_caption = all_captions[-1] if all_captions else None
+        
+        # Generate batch in parallel
+        tasks = []
+        for j, photo in enumerate(batch):
+            context = build_photo_context(i + j, photos, event_context.get("chapters", {}))
+            context["visual_analysis"] = photo.get("visual_analysis") or {}
+            if j == 0 and prev_caption:
+                context["prev_caption"] = prev_caption
+            tasks.append(generate_single_caption(photo["path"], context, event_context))
+        
+        batch_captions = await asyncio.gather(*tasks)
+        all_captions.extend(batch_captions)
+        
+        # Small delay between batches to respect rate limits
+        await asyncio.sleep(0.5)
+    
+    return all_captions

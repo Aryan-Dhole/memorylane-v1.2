@@ -70,6 +70,9 @@ class PaymentVerifyRequest(BaseModel):
 
 class PaymentVerifyResponse(BaseModel):
     success: bool
+    order_id: Optional[str] = None
+    message: Optional[str] = None
+    estimated_minutes: Optional[int] = None
 
 class OrderCreateRequest(BaseModel):
     tier: str

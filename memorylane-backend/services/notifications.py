@@ -296,3 +296,188 @@ def send_admin_failed_job_alert(failed_job_data: dict) -> bool:
     except Exception as e:
         logger.error("Failed to send admin failed job alert via Resend: %s", e)
         return False
+
+
+# ---------------- EMAIL 5: REVIEW READY ----------------
+def send_review_ready_email(
+    order_id: str,
+    recipient_email: str,
+    recipient_name: str,
+    event_name: str,
+    review_url: str,
+    stats_text: str = "",
+    review_deadline: str = ""
+) -> bool:
+    """
+    Sends email notifying the user that their gallery is ready to review before going live.
+    """
+    api_key = os.getenv("RESEND_API_KEY")
+
+    html_content = f"""
+    <div style="background-color: #0a0a0f; color: #faf9f7; font-family: 'Inter', sans-serif; padding: 40px; border-radius: 8px; max-width: 600px; margin: auto;">
+        <div style="border-bottom: 1px solid #222227; padding-bottom: 20px; text-align: center;">
+            <h1 style="color: #c9a96e; font-family: 'Playfair Display', serif; font-size: 28px; margin: 0;">MemoryLane</h1>
+        </div>
+        <div style="padding: 30px 0;">
+            <h2 style="font-size: 22px; font-weight: normal; margin-top: 0; text-align: center;">Your gallery is ready to review! 🎉</h2>
+            <p>Hi {recipient_name},</p>
+            <p>Your <strong>{event_name}</strong> gallery is ready. Our AI has curated the best moments from your photos.</p>
+
+            {stats_text}
+
+            <p style="font-size: 14px; color: #a89f94; margin-top: 20px;">Before your gallery goes live, take a look and make any final changes — remove a photo, edit a caption, or just hit publish if it looks perfect.</p>
+
+            <div style="margin: 30px 0; text-align: center;">
+                <a href="{review_url}" style="display: inline-block; background-color: #c9a96e; color: #0a0a0f; padding: 16px 30px; border-radius: 30px; font-weight: bold; text-decoration: none; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase;">
+                    Review Your Gallery
+                </a>
+            </div>
+
+            <div style="background-color: #121217; padding: 15px; border-radius: 8px; margin-top: 25px; border-left: 3px solid #c9a96e;">
+                <p style="margin: 0; font-size: 13px; color: #a89f94; line-height: 1.5;">
+                    <strong>⏰ Auto-publishes in 24 hours</strong> if no action is taken.
+                    {f'Deadline: {review_deadline}' if review_deadline else ''}
+                </p>
+            </div>
+
+            <div style="background-color: #121217; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                <p style="margin: 0; font-size: 13px; color: #a89f94; text-align: center; line-height: 1.5;">
+                    <strong>What you can do in the review:</strong><br/>
+                    ✓ Remove any photos you don't want<br/>
+                    ✓ Edit captions<br/>
+                    ✓ Add more photos from your uploaded batch<br/>
+                    ✓ Rearrange photos within moments
+                </p>
+            </div>
+        </div>
+        <div style="border-top: 1px solid #222227; padding-top: 20px; font-size: 11px; text-align: center; color: #a89f94;">
+            MemoryLane AI • memorylane.in
+        </div>
+    </div>
+    """
+
+    if not api_key or "mock" in api_key or not HAS_RESEND:
+        logger.info("Resend not configured. [EMAIL DRY RUN] To: %s, Subject: Review Ready, Title: %s", recipient_email, event_name)
+        return True
+
+    try:
+        resend.api_key = api_key
+        resend.Emails.send({
+            "from": "MemoryLane <onboarding@resend.dev>",
+            "to": recipient_email,
+            "subject": f"🎉 Your {event_name} gallery is ready to review",
+            "html": html_content
+        })
+        logger.info("Review ready email sent successfully to %s", recipient_email)
+        return True
+    except Exception as e:
+        logger.error("Failed to send review ready email via Resend: %s", e)
+        return False
+
+
+def send_review_ready_whatsapp(recipient_phone: str, recipient_name: str, event_name: str, review_url: str) -> bool:
+    """
+    Sends WhatsApp notification when the gallery is ready for user review.
+    """
+    client, from_number = _get_twilio_client()
+    body = f"Your {event_name} gallery is ready! 🎉 Review it here before it goes live: {review_url}\n\nYou have 24 hours to make changes, then it publishes automatically."
+
+    if not client:
+        logger.info("Twilio not configured. [WHATSAPP DRY RUN] To: %s, Message: %s", recipient_phone, body)
+        return True
+
+    try:
+        client.messages.create(
+            from_=from_number,
+            body=body,
+            to=f"whatsapp:{recipient_phone}"
+        )
+        logger.info("WhatsApp review ready notification sent successfully to %s", recipient_phone)
+        return True
+    except Exception as e:
+        logger.warning("Swallowing Twilio exception (Sandbox limit or verification missing): %s", e)
+        return True
+
+
+# ---------------- EMAIL 6: GALLERY AUTO-PUBLISHED ----------------
+def send_gallery_auto_published_email(
+    order_id: str,
+    recipient_email: str,
+    recipient_name: str,
+    event_name: str,
+    share_url: str
+) -> bool:
+    """
+    Sends email notifying the user that their gallery was auto-published after the review deadline passed.
+    """
+    api_key = os.getenv("RESEND_API_KEY")
+
+    html_content = f"""
+    <div style="background-color: #0a0a0f; color: #faf9f7; font-family: 'Inter', sans-serif; padding: 40px; border-radius: 8px; max-width: 600px; margin: auto;">
+        <div style="border-bottom: 1px solid #222227; padding-bottom: 20px; text-align: center;">
+            <h1 style="color: #c9a96e; font-family: 'Playfair Display', serif; font-size: 28px; margin: 0;">MemoryLane</h1>
+        </div>
+        <div style="padding: 30px 0;">
+            <h2 style="font-size: 22px; font-weight: normal; margin-top: 0; text-align: center;">Your gallery is now live! 🎉</h2>
+            <p>Hi {recipient_name},</p>
+            <p>Your <strong>{event_name}</strong> gallery was published automatically. It's ready to share with everyone who was there.</p>
+
+            <div style="margin: 30px 0; text-align: center;">
+                <a href="{share_url}" style="display: inline-block; background-color: #c9a96e; color: #0a0a0f; padding: 16px 30px; border-radius: 30px; font-weight: bold; text-decoration: none; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase;">
+                    View Your Gallery
+                </a>
+            </div>
+
+            <div style="background-color: #121217; padding: 15px; border-radius: 8px; margin-top: 25px;">
+                <p style="margin: 0; font-size: 13px; color: #a89f94; text-align: center; line-height: 1.5;">
+                    To make changes, you can still edit captions and remove photos from your <a href="https://memorylane.in/dashboard" style="color: #c9a96e; text-decoration: underline;">dashboard</a>.
+                </p>
+            </div>
+        </div>
+        <div style="border-top: 1px solid #222227; padding-top: 20px; font-size: 11px; text-align: center; color: #a89f94;">
+            MemoryLane AI • memorylane.in
+        </div>
+    </div>
+    """
+
+    if not api_key or "mock" in api_key or not HAS_RESEND:
+        logger.info("Resend not configured. [EMAIL DRY RUN] To: %s, Subject: Gallery Auto-Published, Title: %s", recipient_email, event_name)
+        return True
+
+    try:
+        resend.api_key = api_key
+        resend.Emails.send({
+            "from": "MemoryLane <onboarding@resend.dev>",
+            "to": recipient_email,
+            "subject": f"Your {event_name} gallery is now live 🎉",
+            "html": html_content
+        })
+        logger.info("Gallery auto-published email sent successfully to %s", recipient_email)
+        return True
+    except Exception as e:
+        logger.error("Failed to send auto-published email via Resend: %s", e)
+        return False
+
+
+def send_gallery_auto_published_whatsapp(recipient_phone: str, event_name: str, share_url: str) -> bool:
+    """
+    Sends WhatsApp notification when the gallery is auto-published after review deadline.
+    """
+    client, from_number = _get_twilio_client()
+    body = f"Your {event_name} gallery is now live! 🎉 Share it with everyone: {share_url}"
+
+    if not client:
+        logger.info("Twilio not configured. [WHATSAPP DRY RUN] To: %s, Message: %s", recipient_phone, body)
+        return True
+
+    try:
+        client.messages.create(
+            from_=from_number,
+            body=body,
+            to=f"whatsapp:{recipient_phone}"
+        )
+        logger.info("WhatsApp auto-published notification sent successfully to %s", recipient_phone)
+        return True
+    except Exception as e:
+        logger.warning("Swallowing Twilio exception (Sandbox limit or verification missing): %s", e)
+        return True

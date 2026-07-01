@@ -29,19 +29,40 @@ class SimpleRedisQueue:
             logger.warning("Redis is offline or not configured. Falling back to in-memory queue.")
             self.client = None
 
-    def add(self, task_name: str, data: dict):
-        """Add a job to the queue."""
+    def add(self, task_name: str, data: dict, delay_seconds: int = 0):
+        """Add a job to the queue. If delay_seconds > 0, the job will be delayed."""
         job_data = {"task_name": task_name, "data": data}
+        
+        if delay_seconds > 0:
+            # For delayed jobs, use asyncio.create_task with sleep
+            async def _delayed_add():
+                await asyncio.sleep(delay_seconds)
+                self._enqueue_now(job_data)
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(_delayed_add())
+                    logger.info("Scheduled delayed job %s on queue %s in %d seconds", task_name, self.name, delay_seconds)
+                    return
+            except RuntimeError:
+                pass
+            # Fallback: enqueue immediately if we can't schedule
+            logger.warning("Could not schedule delayed job, enqueueing immediately: %s", task_name)
+        
+        self._enqueue_now(job_data)
+    
+    def _enqueue_now(self, job_data: dict):
+        """Internal: immediately enqueue a job."""
+        task_name = job_data.get("task_name", "unknown")
         if self.use_redis and self.client:
             try:
                 self.client.rpush(f"queue:{self.name}", json.dumps(job_data))
-                logger.info("Added job to Redis queue %s: %s", self.name, data)
+                logger.info("Added job to Redis queue %s: %s", self.name, job_data.get("data"))
                 return
             except Exception as e:
                 logger.error("Failed to add job to Redis, writing to memory queue: %s", str(e))
         
         # In-memory fallback
-        # Since add might be called from sync route, we need to run it in the event loop
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
@@ -52,7 +73,7 @@ class SimpleRedisQueue:
             loop.create_task(self.memory_queue.put(job_data))
         else:
             loop.run_until_complete(self.memory_queue.put(job_data))
-        logger.info("Added job to in-memory queue %s: %s", self.name, data)
+        logger.info("Added job to in-memory queue %s: %s", self.name, job_data.get("data"))
 
     def process(self, task_name: str, handler: Callable):
         """Register a processing handler for a specific task type."""

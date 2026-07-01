@@ -84,6 +84,15 @@ def get_gallery_details(request: Request, slug: str, background_tasks: Backgroun
     
     event = event_res.data[0]
     
+    # Check if gallery is published (publicly accessible)
+    if not event.get("gallery_live"):
+        if event.get("status") == "review_ready":
+            raise HTTPException(
+                status_code=403,
+                detail="This gallery is not yet published. The creator is reviewing it."
+            )
+        raise HTTPException(status_code=404, detail="Event gallery not found")
+    
     # Check if gallery has expired
     expires_at_str = event.get("expires_at")
     if expires_at_str:
@@ -438,17 +447,21 @@ def get_user_dashboard_galleries(authorization: Optional[str] = Header(None)):
             p_res = supabase.table("photos").select("id", count="exact").eq("batch_id", batch_res.data[0]["id"]).eq("is_selected", True).execute()
             p_count = p_res.count or 0
             
-        status = "Live" if ev.get("gallery_live") else "Draft"
-        
         galleries.append({
             "id": ev["id"],
             "event_name": ev.get("event_name") or "Unnamed Event",
             "slug": ev.get("event_slug") or "",
-            "status": status,
+            "status": ev.get("status", "draft"),
+            "tier": ev.get("tier", "free"),
+            "gallery_live": ev.get("gallery_live", False),
             "view_count": ev.get("view_count", 0),
             "photo_count": p_count,
             "created_at": ev.get("created_at"),
-            "expires_at": ev.get("expires_at")
+            "expires_at": ev.get("expires_at"),
+            "review_deadline": ev.get("review_deadline"),
+            "published_at": ev.get("published_at"),
+            "auto_published": ev.get("auto_published", False),
+            "share_url": ev.get("share_url")
         })
         
     return {"galleries": galleries}
@@ -486,3 +499,164 @@ def update_gallery_settings(slug: str, req: GallerySettingsPatch, authorization:
         invalidate_gallery_cache(slug)
         
     return {"message": "Gallery settings updated successfully"}
+
+
+# --- PUBLISH ENDPOINT ---
+class PublishRequest(BaseModel):
+    pass
+
+@router.post("/{slug}/publish")
+def publish_gallery(slug: str, authorization: Optional[str] = Header(None)):
+    """
+    Publishes a gallery that is in review_ready state. Makes it publicly accessible.
+    """
+    user_id = get_user_id_from_auth(authorization)
+    
+    event_res = supabase.table("orders").select("*").eq("event_slug", slug).execute()
+    if not event_res.data:
+        raise HTTPException(status_code=404, detail="Gallery not found")
+    
+    order = event_res.data[0]
+    
+    if order["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Not your gallery")
+    
+    if order["status"] not in ["review_ready"]:
+        raise HTTPException(status_code=400, detail=f"Cannot publish gallery in '{order['status']}' state")
+    
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    supabase.table("orders").update({
+        "status": "published",
+        "gallery_live": True,
+        "published_at": now,
+        "auto_published": False,
+        "reviewed_at": now
+    }).eq("id", order["id"]).execute()
+    
+    invalidate_gallery_cache(slug)
+    
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    return {
+        "success": True,
+        "gallery_url": f"{frontend_url}/e/{slug}",
+        "message": "Your gallery is now live!"
+    }
+
+
+# --- REVIEW DATA ENDPOINT ---
+@router.get("/{slug}/review")
+def get_review_data(slug: str, authorization: Optional[str] = Header(None)):
+    """
+    Returns all photos (selected and unselected) for the gallery owner to review before publishing.
+    """
+    user_id = get_user_id_from_auth(authorization)
+    
+    event_res = supabase.table("orders").select("*").eq("event_slug", slug).execute()
+    if not event_res.data:
+        raise HTTPException(status_code=404, detail="Gallery not found")
+    
+    order = event_res.data[0]
+    if order["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to review this gallery")
+    
+    if order["status"] not in ["review_ready", "published"]:
+        raise HTTPException(status_code=400, detail=f"Gallery is in '{order['status']}' state and cannot be reviewed")
+    
+    order_id = order["id"]
+    
+    # Fetch batch
+    batch_res = supabase.table("photo_batches").select("id").eq("order_id", order_id).execute()
+    if not batch_res.data:
+        raise HTTPException(status_code=404, detail="Photo batch not found")
+    batch_id = batch_res.data[0]["id"]
+    
+    # Fetch ALL photos (both selected and unselected)
+    photos_res = supabase.table("photos").select("*").eq("batch_id", batch_id).order("sequence_index").execute()
+    photos_data = photos_res.data or []
+    
+    # Fetch moments
+    moments_res = supabase.table("gallery_moments").select("*").eq("order_id", order_id).order("display_order").execute()
+    moments_list = moments_res.data or []
+    
+    # Format photos for review
+    review_photos = []
+    for p in photos_data:
+        caption = p.get("caption_edited") or p.get("caption_v2") or p.get("caption") or ""
+        review_photos.append({
+            "id": p["id"],
+            "url": s3_service.generate_download_url(p["s3_key"]),
+            "thumb_url": s3_service.generate_download_url(p["s3_key"], expires_in=3600),
+            "caption": caption,
+            "is_selected": p.get("is_selected", False),
+            "moment_id": p.get("moment_id"),
+            "scene_label": p.get("scene_label", "candid"),
+            "face_cluster_ids": p.get("face_cluster_ids") or [],
+            "sequence_index": p.get("sequence_index", 0)
+        })
+    
+    # Format moments
+    review_moments = []
+    for m in moments_list:
+        review_moments.append({
+            "id": m["id"],
+            "name": m["name"],
+            "display_order": m["display_order"]
+        })
+    
+    return {
+        "order_id": order_id,
+        "event_name": order.get("event_name", "My Event"),
+        "status": order["status"],
+        "review_deadline": order.get("review_deadline"),
+        "published_at": order.get("published_at"),
+        "auto_published": order.get("auto_published", False),
+        "tier": order.get("tier", "free"),
+        "photos": review_photos,
+        "moments": review_moments,
+        "total_photos": len([p for p in review_photos if p["is_selected"]]),
+        "total_uploaded": len(review_photos)
+    }
+
+
+# --- REVIEW PHOTO UPDATE ENDPOINT ---
+class PhotoUpdate(BaseModel):
+    photo_id: str
+    is_selected: Optional[bool] = None
+    caption_edited: Optional[str] = None
+
+class ReviewPhotosUpdate(BaseModel):
+    updates: List[PhotoUpdate]
+
+@router.patch("/{slug}/review/photos")
+def update_review_photos(slug: str, req: ReviewPhotosUpdate, authorization: Optional[str] = Header(None)):
+    """
+    Batch update photos during the review phase (toggle selection, edit captions).
+    """
+    user_id = get_user_id_from_auth(authorization)
+    
+    event_res = supabase.table("orders").select("*").eq("event_slug", slug).execute()
+    if not event_res.data:
+        raise HTTPException(status_code=404, detail="Gallery not found")
+    
+    order = event_res.data[0]
+    if order["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to edit this gallery")
+    
+    if order["status"] not in ["review_ready", "published"]:
+        raise HTTPException(status_code=400, detail=f"Gallery is in '{order['status']}' state and cannot be edited")
+    
+    updated_count = 0
+    for update in req.updates:
+        update_data = {}
+        if update.is_selected is not None:
+            update_data["is_selected"] = update.is_selected
+        if update.caption_edited is not None:
+            update_data["caption_edited"] = update.caption_edited
+        
+        if update_data:
+            supabase.table("photos").update(update_data).eq("id", update.photo_id).execute()
+            updated_count += 1
+    
+    invalidate_gallery_cache(slug)
+    
+    return {"success": True, "updated_count": updated_count}

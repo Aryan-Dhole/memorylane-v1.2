@@ -126,12 +126,12 @@ export default function AdminDashboard() {
 
   const getRevenueTotal = () => {
     return orders
-      .filter((o) => o.status === "paid" || o.status === "processing" || o.status === "ready")
+      .filter((o) => o.status === "paid" || o.status === "processing" || o.status === "review_ready" || o.status === "published")
       .reduce((sum, o) => sum + ((o.total_price || 0) / 100), 0)
   }
 
   const getReadyCount = () => {
-    return orders.filter((o) => o.status === "ready").length
+    return orders.filter((o) => o.status === "published").length
   }
 
   const getProcessingCount = () => {
@@ -239,9 +239,9 @@ export default function AdminDashboard() {
         <div className="space-y-4">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="bg-white border border-zinc-200 p-1.5 rounded-2xl shadow-sm overflow-x-auto max-w-full flex">
-              {["all", "draft", "paid", "processing", "ready", "failed"].map((tab) => (
+              {["all", "draft", "paid", "processing", "review_ready", "published", "failed", "refunded"].map((tab) => (
                 <TabsTrigger key={tab} value={tab} className="capitalize text-[10px] font-bold font-geist-mono tracking-wider px-4 py-2 rounded-xl transition-all">
-                  {tab}
+                  {tab === "review_ready" ? "review ready" : tab}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -289,11 +289,13 @@ export default function AdminDashboard() {
                           </td>
                           <td className="p-4">
                             <span className={`inline-block px-2.5 py-0.5 rounded-full text-[8.5px] font-bold uppercase border ${
-                              ord.status === "ready" ? "bg-emerald-50 border-emerald-100 text-emerald-800" :
+                              ord.status === "published" ? "bg-emerald-50 border-emerald-100 text-emerald-800" :
+                              ord.status === "review_ready" ? "bg-purple-50 border-purple-100 text-purple-800" :
                               ord.status === "processing" ? "bg-indigo-550/10 text-indigo-750" :
-                              ord.status === "paid" ? "bg-amber-50 border-amber-100 text-amber-800" :
+                              ord.status === "paid" ? "bg-blue-50 border-blue-100 text-blue-850" :
                               ord.status === "failed" ? "bg-rose-50 border-rose-100 text-rose-800 font-black" :
-                              "bg-zinc-100 border-zinc-200 text-zinc-500"
+                              ord.status === "refunded" ? "bg-zinc-100 border-zinc-200 text-zinc-500" :
+                              "bg-zinc-150 border-zinc-200 text-zinc-650"
                             }`}>
                               {ord.status}
                             </span>
@@ -332,7 +334,7 @@ export default function AdminDashboard() {
                     <div className="flex justify-between"><span>Slug URL:</span><span className="text-zinc-800 font-bold">/e/{selectedOrder.event_slug}</span></div>
                     <div className="flex justify-between">
                       <span>Live Link:</span>
-                      {selectedOrder.status === "ready" ? (
+                      {selectedOrder.status === "published" ? (
                         <a 
                           href={`/e/${selectedOrder.event_slug}`}
                           target="_blank"
@@ -342,7 +344,7 @@ export default function AdminDashboard() {
                           Open URL <ExternalLink className="w-3 h-3" />
                         </a>
                       ) : (
-                        <span className="text-zinc-350">Not ready</span>
+                        <span className="text-zinc-350">Not published</span>
                       )}
                     </div>
                     <div className="flex justify-between">
@@ -420,17 +422,17 @@ export default function AdminDashboard() {
                   <div className="space-y-3">
                     <label className="text-[9px] font-bold font-geist-mono uppercase tracking-widest text-zinc-400 block">Manual Status Override</label>
                     <div className="grid grid-cols-2 gap-2">
-                      {["draft", "paid", "processing", "ready", "failed"].map((st) => (
+                      {["draft", "paid", "processing", "review_ready", "published", "expired", "failed", "refunded"].map((st) => (
                         <Button 
                           key={st} 
                           variant={selectedOrder.status === st ? "default" : "outline"}
                           onClick={() => handleUpdateOrderStatus(st)}
                           disabled={updatingStatus}
-                          className={`text-[9px] font-bold uppercase py-2 h-8 rounded-xl font-geist-mono ${
+                          className={`text-[9px] font-bold uppercase py-1 h-8 rounded-xl font-geist-mono ${
                             selectedOrder.status === st ? "bg-zinc-950 text-white hover:bg-zinc-900" : "border-zinc-200 hover:bg-zinc-50"
                           }`}
                         >
-                          {st}
+                          {st === "review_ready" ? "rev ready" : st}
                         </Button>
                       ))}
                     </div>

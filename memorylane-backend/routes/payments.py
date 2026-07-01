@@ -209,7 +209,13 @@ def verify_payment(req: PaymentVerifyRequest, background_tasks: BackgroundTasks)
             if os.getenv("ENV") == "production":
                 raise e
                 
-        return PaymentVerifyResponse(success=True)
+        estimated_minutes = 15 if tier == "photographer" else 60
+        return PaymentVerifyResponse(
+            success=True,
+            order_id=order_id,
+            message="Payment confirmed. We'll notify you when your gallery is ready to review.",
+            estimated_minutes=estimated_minutes
+        )
     except Exception as e:
         logger.exception("Failed to verify payment")
         return JSONResponse(
@@ -305,7 +311,12 @@ def free_checkout(req: PaymentCreateRequest, background_tasks: BackgroundTasks, 
             background_tasks.add_task(process_job, FakeJob(job_data))
             logger.info("Triggered free gallery curation job directly via BackgroundTasks")
             
-        return PaymentVerifyResponse(success=True)
+        return PaymentVerifyResponse(
+            success=True,
+            order_id=req.order_id,
+            message="Free gallery confirmed. We'll notify you when your gallery is ready to review.",
+            estimated_minutes=60
+        )
     except Exception as e:
         logger.exception("Failed to verify free checkout order")
         return JSONResponse(

@@ -13,7 +13,7 @@ from utils.queue import get_queue
 from utils.supabase_client import supabase
 from services.photo_selector import run_full_pipeline
 from services import s3_service
-from services.notifications import send_order_confirmation_email, send_gallery_ready_email, send_gallery_ready_whatsapp
+from services.notifications import send_order_confirmation_email, send_gallery_ready_email, send_gallery_ready_whatsapp, send_review_ready_email, send_review_ready_whatsapp, send_gallery_auto_published_email, send_gallery_auto_published_whatsapp
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -199,6 +199,9 @@ async def process_job(job):
         elif tier == "basic":
             expires_at = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)).isoformat()
 
+        # Calculate review deadline (24 hours from now)
+        review_deadline = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
+
         supabase.table("photo_batches").update({
             "ai_status": "completed",
             "ai_progress": 100,
@@ -206,16 +209,18 @@ async def process_job(job):
         }).eq("id", batch_id).execute()
 
         supabase.table("orders").update({
-            "status": "ready",
+            "status": "review_ready",
             "share_url": share_url,
-            "gallery_live": True,
-            "ready_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "gallery_live": False,
+            "review_deadline": review_deadline.isoformat(),
+            "pipeline_completed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "pipeline_duration_seconds": result.get("processing_time_seconds"),
             "expires_at": expires_at
         }).eq("id", order_id).execute()
     except Exception as e:
         logger.error("Failed to finalize order status in DB: %s", e)
 
-    # 11. Send notification emails & whatsapp messages
+    # 11. Send review-ready notification emails & whatsapp messages
     user_email = "customer@example.com"
     user_name = "Customer"
     user_phone = ""
@@ -229,22 +234,108 @@ async def process_job(job):
     except Exception as e:
         logger.error("Failed to fetch user profiles for notifications: %s", e)
 
+    frontend_url_base = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    review_url = f"{frontend_url_base}/dashboard/gallery/{slug}/review"
+    review_deadline_str = ""
+    try:
+        review_deadline_str = review_deadline.strftime("%d %B %Y, %I:%M %p UTC")
+    except Exception:
+        pass
+
     try:
         stats_text = f"<p style='color: #a89f94; text-align: center; font-size: 14px;'>{len(result['selected_photos'])} Photos · {len(moments)} Moments · {len(clusters)} Faces grouped</p>"
-        send_gallery_ready_email(
+        send_review_ready_email(
             order_id=order_id,
             recipient_email=user_email,
             recipient_name=user_name,
             event_name=event_name,
-            share_url=share_url,
-            stats_text=stats_text
+            review_url=review_url,
+            stats_text=stats_text,
+            review_deadline=review_deadline_str
         )
         if user_phone:
-            send_gallery_ready_whatsapp(user_phone, event_name, share_url)
+            send_review_ready_whatsapp(user_phone, user_name, event_name, review_url)
     except Exception as ne:
-        logger.error("Failed to send gallery ready alerts: %s", ne)
+        logger.error("Failed to send review ready alerts: %s", ne)
 
-    logger.info("Background gallery compilation task complete. Gallery Live URL: %s", share_url)
+    # 12. Schedule auto-publish job for 24 hours later
+    try:
+        queue = get_queue("ai-pipeline")
+        queue.add("auto-publish", {"order_id": order_id}, delay_seconds=24 * 60 * 60)
+        logger.info("Scheduled auto-publish job for order %s in 24 hours", order_id)
+    except Exception as e:
+        logger.error("Failed to schedule auto-publish job: %s", e)
+
+    logger.info("Background gallery compilation task complete. Gallery review URL: %s", review_url)
+
+async def handle_auto_publish(job):
+    """
+    Auto-publishes a gallery if the user hasn't manually published within the review deadline.
+    """
+    order_id = job.data.get("order_id")
+    if not order_id:
+        logger.error("Auto-publish job missing order_id")
+        return
+
+    try:
+        order_res = supabase.table("orders").select("*").eq("id", order_id).execute()
+        if not order_res.data:
+            logger.info("Auto-publish: Order %s not found — skipping", order_id)
+            return
+
+        order = order_res.data[0]
+
+        if order["status"] == "published":
+            logger.info("Order %s already published by user — skipping auto-publish", order_id)
+            return
+
+        if order["status"] != "review_ready":
+            logger.info("Order %s not in review_ready state (status=%s) — skipping auto-publish", order_id, order["status"])
+            return
+
+        # Auto-publish the gallery
+        supabase.table("orders").update({
+            "status": "published",
+            "gallery_live": True,
+            "published_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "auto_published": True
+        }).eq("id", order_id).execute()
+
+        logger.info("Auto-published gallery for order %s", order_id)
+
+        # Send "your gallery is now live" notifications
+        event_name = order.get("event_name") or "My Event"
+        slug = order.get("event_slug") or ""
+        share_url = order.get("share_url") or f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/e/{slug}"
+
+        user_email = "customer@example.com"
+        user_name = "Customer"
+        user_phone = ""
+        try:
+            user_res = supabase.table("profiles").select("*").eq("id", order["user_id"]).execute()
+            if user_res.data:
+                user_email = user_res.data[0].get("email") or user_email
+                user_name = user_res.data[0].get("name") or user_name
+                user_phone = user_res.data[0].get("phone") or ""
+        except Exception as e:
+            logger.error("Failed to fetch user profile for auto-publish notification: %s", e)
+
+        try:
+            send_gallery_auto_published_email(
+                order_id=order_id,
+                recipient_email=user_email,
+                recipient_name=user_name,
+                event_name=event_name,
+                share_url=share_url
+            )
+            if user_phone:
+                send_gallery_auto_published_whatsapp(user_phone, event_name, share_url)
+        except Exception as ne:
+            logger.error("Failed to send auto-publish notifications: %s", ne)
+
+    except Exception as e:
+        logger.error("Auto-publish job failed for order %s: %s", order_id, e)
+
 
 async def cleanup_expired_trials_task():
     while True:
@@ -282,6 +373,7 @@ async def main():
     queue = get_queue("ai-pipeline")
     queue.process("ai-pipeline", process_job)
     queue.process("generate-book", process_job)
+    queue.process("auto-publish", handle_auto_publish)
     asyncio.create_task(cleanup_expired_trials_task())
     await queue.run()
 

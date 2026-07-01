@@ -1,3 +1,40 @@
+/*
+MemoryLane Create Flow (updated):
+
+STEP 1: Event details (/create)
+  → User enters event name, type, date, location
+
+STEP 2: Choose tier (/create/plan)  
+  → User picks Free / Basic / Premium / Photographer
+
+STEP 3: Upload photos (/create/upload)
+  → Photos upload directly to S3 via pre-signed URLs
+  → Upload confirmation sent to backend
+  → Free tier: skip to receipt, trigger pipeline
+  → Paid tier: continue to checkout
+
+STEP 4: Checkout (/create/checkout) [paid tiers only]
+  → Show order summary
+  → Razorpay payment
+  → On success: trigger pipeline job, redirect to receipt
+
+STEP 5: Receipt (/create/receipt)
+  → "We're creating your gallery"
+  → User can close tab — Supabase Realtime updates if they stay
+  → If they stay and pipeline completes: auto-redirect to review
+
+STEP 6: Review (/dashboard/gallery/[slug]/review) [async — user comes back]
+  → User reviews AI-selected photos
+  → Can remove photos, edit captions, add more photos
+  → Clicks "Publish gallery"
+  → OR: auto-publishes after 24 hours
+
+STEP 7: Published (/e/[slug])
+  → Gallery is live
+  → Share link works for anyone
+  → "Made with MemoryLane" footer visible to all viewers
+*/
+
 "use client"
 
 import React, { useState, useEffect } from "react"
