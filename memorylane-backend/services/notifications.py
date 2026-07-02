@@ -17,6 +17,7 @@ try:
 except ImportError:
     HAS_TWILIO = False
 
+SENDER_EMAIL = os.getenv("SENDER_EMAIL", "onboarding@resend.dev")
 
 def _get_twilio_client():
     if not HAS_TWILIO:
@@ -78,7 +79,7 @@ def send_order_confirmation_email(
     try:
         resend.api_key = api_key
         resend.Emails.send({
-            "from": "MemoryLane <onboarding@resend.dev>",
+            "from": f"MemoryLane <{SENDER_EMAIL}>",
             "to": recipient_email,
             "subject": f"We're creating your {event_name} gallery ✨",
             "html": html_content
@@ -165,7 +166,7 @@ def send_gallery_ready_email(
     try:
         resend.api_key = api_key
         resend.Emails.send({
-            "from": "MemoryLane <onboarding@resend.dev>",
+            "from": f"MemoryLane <{SENDER_EMAIL}>",
             "to": recipient_email,
             "subject": f"{event_name} gallery is live — share it now",
             "html": html_content
@@ -231,7 +232,7 @@ def send_user_pipeline_failed_email(recipient_email: str, recipient_name: str, a
     try:
         resend.api_key = api_key
         resend.Emails.send({
-            "from": "MemoryLane Support <onboarding@resend.dev>",
+            "from": f"MemoryLane Support <{SENDER_EMAIL}>",
             "to": recipient_email,
             "subject": "Something went wrong — refund issued",
             "html": html_content
@@ -286,7 +287,7 @@ def send_admin_failed_job_alert(failed_job_data: dict) -> bool:
     try:
         resend.api_key = api_key
         resend.Emails.send({
-            "from": "MemoryLane Admin <onboarding@resend.dev>",
+            "from": f"MemoryLane Admin <{SENDER_EMAIL}>",
             "to": os.getenv("ADMIN_EMAIL", "admin@memorylane.in"),
             "subject": "CRITICAL: Background Job Failed Max Retries",
             "html": html_content
@@ -363,7 +364,7 @@ def send_review_ready_email(
     try:
         resend.api_key = api_key
         resend.Emails.send({
-            "from": "MemoryLane <onboarding@resend.dev>",
+            "from": f"MemoryLane <{SENDER_EMAIL}>",
             "to": recipient_email,
             "subject": f"🎉 Your {event_name} gallery is ready to review",
             "html": html_content
@@ -447,7 +448,7 @@ def send_gallery_auto_published_email(
     try:
         resend.api_key = api_key
         resend.Emails.send({
-            "from": "MemoryLane <onboarding@resend.dev>",
+            "from": f"MemoryLane <{SENDER_EMAIL}>",
             "to": recipient_email,
             "subject": f"Your {event_name} gallery is now live 🎉",
             "html": html_content

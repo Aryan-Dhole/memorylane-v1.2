@@ -69,7 +69,15 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Build CORS origins list — only include localhost in non-production environments
 is_production = os.getenv("ENV", "development").lower() == "production"
-allowed_origins = [os.getenv("FRONTEND_URL", "http://localhost:3000")]
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+allowed_origins = [frontend_url]
+
+# Dynamically support both apex and www subdomains for HTTPS production origins
+if frontend_url.startswith("https://"):
+    if "://www." in frontend_url:
+        allowed_origins.append(frontend_url.replace("://www.", "://"))
+    else:
+        allowed_origins.append(frontend_url.replace("://", "://www."))
 
 if not is_production:
     allowed_origins.extend([

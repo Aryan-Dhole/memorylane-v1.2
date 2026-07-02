@@ -72,7 +72,7 @@ def generate_upload_url(user_id: str, batch_id: str, filename: str) -> dict:
             
     # Mock / Local fallback url
     # Point the upload URL to our local FastAPI server upload endpoint
-    api_url = os.getenv("FRONTEND_URL", "http://127.0.0.1:8000").replace("3000", "8000").replace("localhost", "127.0.0.1")
+    api_url = os.getenv("BACKEND_URL") or os.getenv("NEXT_PUBLIC_API_URL") or os.getenv("FRONTEND_URL", "http://127.0.0.1:8000").replace("3000", "8000").replace("localhost", "127.0.0.1")
     local_url = f"{api_url}/upload/mock-s3/{s3_key}"
     return {"url": local_url, "key": s3_key, "expires_in": 3600}
     
@@ -104,7 +104,7 @@ def generate_download_url(s3_key: str, expires_in: int = 300) -> str:
             logger.error("ClientError generating presigned download url: %s", e)
             
     # Mock / Local fallback url
-    api_url = os.getenv("FRONTEND_URL", "http://127.0.0.1:8000").replace("3000", "8000").replace("localhost", "127.0.0.1")
+    api_url = os.getenv("BACKEND_URL") or os.getenv("NEXT_PUBLIC_API_URL") or os.getenv("FRONTEND_URL", "http://127.0.0.1:8000").replace("3000", "8000").replace("localhost", "127.0.0.1")
     local_url = f"{api_url}/upload/mock-s3/{s3_key}"
     return local_url
 
