@@ -4,6 +4,7 @@ import boto3
 from botocore.exceptions import ClientError
 from botocore.config import Config
 from dotenv import load_dotenv
+from utils.context import request_base_url
 
 # Load dotenv relative to the backend root directory
 services_dir = os.path.dirname(os.path.abspath(__file__))
@@ -72,8 +73,16 @@ def generate_upload_url(user_id: str, batch_id: str, filename: str) -> dict:
             
     # Mock / Local fallback url
     # Point the upload URL to our local FastAPI server upload endpoint
-    api_url = os.getenv("BACKEND_URL") or os.getenv("NEXT_PUBLIC_API_URL") or os.getenv("FRONTEND_URL", "http://127.0.0.1:8000").replace("3000", "8000").replace("localhost", "127.0.0.1")
-    local_url = f"{api_url}/upload/mock-s3/{s3_key}"
+    api_url = os.getenv("BACKEND_URL") or os.getenv("NEXT_PUBLIC_API_URL") or request_base_url.get()
+    if api_url:
+        local_url = f"{api_url.rstrip('/')}/upload/mock-s3/{s3_key}"
+    else:
+        frontend_url = os.getenv("FRONTEND_URL", "")
+        if frontend_url and "localhost" not in frontend_url and "127.0.0.1" not in frontend_url:
+            local_url = f"/upload/mock-s3/{s3_key}"
+        else:
+            dev_api_url = frontend_url.replace("3000", "8000").replace("localhost", "127.0.0.1") if frontend_url else "http://127.0.0.1:8000"
+            local_url = f"{dev_api_url}/upload/mock-s3/{s3_key}"
     return {"url": local_url, "key": s3_key, "expires_in": 3600}
     
 def generate_download_url(s3_key: str, expires_in: int = 300) -> str:
@@ -104,9 +113,19 @@ def generate_download_url(s3_key: str, expires_in: int = 300) -> str:
             logger.error("ClientError generating presigned download url: %s", e)
             
     # Mock / Local fallback url
-    api_url = os.getenv("BACKEND_URL") or os.getenv("NEXT_PUBLIC_API_URL") or os.getenv("FRONTEND_URL", "http://127.0.0.1:8000").replace("3000", "8000").replace("localhost", "127.0.0.1")
-    local_url = f"{api_url}/upload/mock-s3/{s3_key}"
-    return local_url
+    api_url = os.getenv("BACKEND_URL") or os.getenv("NEXT_PUBLIC_API_URL") or request_base_url.get()
+    if api_url:
+        return f"{api_url.rstrip('/')}/upload/mock-s3/{s3_key}"
+        
+    frontend_url = os.getenv("FRONTEND_URL", "")
+    if frontend_url and "localhost" not in frontend_url and "127.0.0.1" not in frontend_url:
+        # In production, if backend URL is not set, return a relative URL
+        # so the frontend can rewrite/proxy it to the correct backend API.
+        return f"/upload/mock-s3/{s3_key}"
+        
+    # Local dev fallback
+    dev_api_url = frontend_url.replace("3000", "8000").replace("localhost", "127.0.0.1") if frontend_url else "http://127.0.0.1:8000"
+    return f"{dev_api_url}/upload/mock-s3/{s3_key}"
 
 def delete_batch(batch_prefix: str) -> bool:
     """
