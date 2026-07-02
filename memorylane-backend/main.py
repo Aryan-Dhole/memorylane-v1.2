@@ -67,7 +67,7 @@ app = FastAPI(title="MemoryLane API", version="1.0.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Build CORS origins list — only include localhost in non-production environments
+# Build CORS origins list
 is_production = os.getenv("ENV", "development").lower() == "production"
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 allowed_origins = [frontend_url]
@@ -79,30 +79,39 @@ if frontend_url.startswith("https://"):
     else:
         allowed_origins.append(frontend_url.replace("://", "://www."))
 
-if not is_production:
-    allowed_origins.extend([
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000"
-    ])
+# Always allow main production domains
+allowed_origins.extend([
+    "https://memorylaneapps.in",
+    "https://www.memorylaneapps.in"
+])
 
-if not is_production:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=allowed_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# Parse additional comma-separated origins if provided
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    allowed_origins.extend([origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()])
+
+# Local dev fallback origins
+allowed_origins.extend([
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000"
+])
+
+# Remove duplicates
+allowed_origins = list(set(allowed_origins))
+
+# Regex to allow any localhost/127.0.0.1, and any subdomain of memorylaneapps.in
+origin_regex = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://([a-zA-Z0-9-]+\.)*memorylaneapps\.in$"
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_origin_regex=origin_regex,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")
