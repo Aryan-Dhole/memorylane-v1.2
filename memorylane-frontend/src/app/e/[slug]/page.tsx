@@ -9,6 +9,7 @@ import GuestUploadSection from "@/components/gallery/GuestUploadSection"
 import GalleryFooter from "@/components/gallery/GalleryFooter"
 import PhotoLightbox from "@/components/gallery/PhotoLightbox"
 import { Loader2 } from "lucide-react"
+import { API_BASE_URL } from "@/lib/api"
 
 interface Photo {
   id: string;
@@ -74,7 +75,7 @@ export default function GalleryPage({ params }: PageProps) {
 
   const fetchGallery = async () => {
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const apiBase = API_BASE_URL
       const res = await fetch(`${apiBase}/gallery/${slug}`)
       if (!res.ok) {
         if (res.status === 403) {
@@ -143,7 +144,7 @@ export default function GalleryPage({ params }: PageProps) {
     setGallery({ ...gallery, moments: updatedMoments })
 
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const apiBase = API_BASE_URL
       const res = await fetch(`${apiBase}/gallery/${slug}/react`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

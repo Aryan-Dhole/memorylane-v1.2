@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { supabase } from "@/lib/supabase"
-import { api } from "@/lib/api"
+import { api, API_BASE_URL } from "@/lib/api"
 import {
   Sparkles,
   Clock,
@@ -159,7 +159,7 @@ export default function UserDashboard() {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
 
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const apiBase = API_BASE_URL
       const res = await fetch(`${apiBase}/photographer/profile`, {
         method: "PATCH",
         headers: {

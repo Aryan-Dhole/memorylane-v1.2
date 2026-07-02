@@ -3,6 +3,7 @@
 import React, { useState } from "react"
 import { useDropzone } from "react-dropzone"
 import { Upload, Check, AlertCircle, Loader2 } from "lucide-react"
+import { API_BASE_URL } from "@/lib/api"
 
 interface GuestUploadSectionProps {
   slug: string;
@@ -39,7 +40,7 @@ export default function GuestUploadSection({ slug, onUploadSuccess }: GuestUploa
         formData.append("session_id", guestSession)
         formData.append("file", file)
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/gallery/${slug}/upload`, {
+        const response = await fetch(`${API_BASE_URL}/gallery/${slug}/upload`, {
           method: "POST",
           body: formData,
         })

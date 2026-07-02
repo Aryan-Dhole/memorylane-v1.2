@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
+import { API_BASE_URL } from "@/lib/api"
 import { Sparkles, Loader2, ArrowLeft, ArrowRight, Check } from "lucide-react"
 
 export default function JoinPhotographerPortal() {
@@ -42,7 +43,7 @@ export default function JoinPhotographerPortal() {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
       
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const apiBase = API_BASE_URL
       const res = await fetch(`${apiBase}/photographer/join`, {
         method: "POST",
         headers: {

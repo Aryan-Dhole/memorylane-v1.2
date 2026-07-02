@@ -3,7 +3,7 @@
 import React, { useState, useEffect, use } from "react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
-import { api } from "@/lib/api"
+import { api, API_BASE_URL } from "@/lib/api"
 import { 
   ArrowLeft, Save, Shield, Users, Check, X, 
   Settings, Loader2, Eye, Heart, Image as ImageIcon
@@ -50,7 +50,7 @@ export default function GalleryManagementPage({ params }: PageProps) {
       }
 
       // Fetch public metadata
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const apiBase = API_BASE_URL
       const res = await fetch(`${apiBase}/gallery/${slug}`)
       if (!res.ok) throw new Error("Failed to load gallery settings")
       
@@ -110,7 +110,7 @@ export default function GalleryManagementPage({ params }: PageProps) {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
 
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const apiBase = API_BASE_URL
       const res = await fetch(`${apiBase}/gallery/${slug}/settings`, {
         method: "PATCH",
         headers: {
@@ -179,7 +179,7 @@ export default function GalleryManagementPage({ params }: PageProps) {
 
       // Invalidate Redis cache on backend
       const { data: { session } } = await supabase.auth.getSession()
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/gallery/${slug}/settings`, {
+      await fetch(`${API_BASE_URL}/gallery/${slug}/settings`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -351,7 +351,7 @@ export default function GalleryManagementPage({ params }: PageProps) {
             ) : (
               <div className="space-y-4 max-h-[45vh] overflow-y-auto pr-1">
                 {pendingUploads.map((upload) => {
-                  const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/gallery/${slug}/raw-photo` // (will load S3 presigned or simple key)
+                  const url = `${API_BASE_URL}/gallery/${slug}/raw-photo` // (will load S3 presigned or simple key)
                   // Let's resolve simple local crop image or mock placeholder for UI
                   const placeholder = "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=120&auto=format&fit=crop"
                   
