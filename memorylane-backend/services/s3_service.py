@@ -15,7 +15,13 @@ logger = logging.getLogger(__name__)
 # Root directory for local mock S3 storage
 LOCAL_S3_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "local_s3_bucket"))
 
+_s3_client = None
+
 def get_s3_client():
+    global _s3_client
+    if _s3_client is not None:
+        return _s3_client
+
     # If in development mode, default to local mock S3 storage unless USE_LIVE_S3 is explicitly set to true
     if os.getenv("ENV") != "production" and os.getenv("USE_LIVE_S3", "false").lower() != "true":
         return None
@@ -34,13 +40,14 @@ def get_s3_client():
             signature_version="s3v4",
             retries={"max_attempts": 3}
         )
-        return boto3.client(
+        _s3_client = boto3.client(
             "s3",
             region_name=aws_region,
             aws_access_key_id=aws_access_key,
             aws_secret_access_key=aws_secret_key,
             config=s3_config
         )
+        return _s3_client
     except Exception as e:
         logger.error("Failed to initialize boto3 S3 client: %s. Using local fallback.", e)
         return None
