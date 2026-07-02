@@ -2,7 +2,7 @@ import { updateSession } from '@/lib/middleware'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   // Allow trial space paths without session guards
   const isTrialRoute = req.nextUrl.pathname.startsWith('/create/trial')
 
