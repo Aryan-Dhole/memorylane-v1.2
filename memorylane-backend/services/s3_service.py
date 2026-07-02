@@ -45,6 +45,26 @@ def get_s3_client():
         logger.error("Failed to initialize boto3 S3 client: %s. Using local fallback.", e)
         return None
 
+def _get_api_url() -> str:
+    """Helper to dynamically resolve backend API URL in dev & production (Railway)."""
+    api_url = os.getenv("BACKEND_URL") or os.getenv("NEXT_PUBLIC_API_URL")
+    
+    # Fallback to Railway static URL if available
+    if not api_url:
+        railway_static = os.getenv("RAILWAY_STATIC_URL")
+        if railway_static:
+            api_url = f"https://{railway_static}" if not railway_static.startswith("http") else railway_static
+            
+    # Local fallback
+    if not api_url:
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        if "localhost" in frontend_url or "127.0.0.1" in frontend_url or "3000" in frontend_url:
+            api_url = frontend_url.replace("3000", "8000").replace("localhost", "127.0.0.1")
+        else:
+            api_url = "http://127.0.0.1:8000"
+            
+    return api_url.rstrip("/")
+
 def generate_upload_url(user_id: str, batch_id: str, filename: str) -> dict:
     """
     Generates a pre-signed S3 upload URL.
@@ -72,7 +92,7 @@ def generate_upload_url(user_id: str, batch_id: str, filename: str) -> dict:
             
     # Mock / Local fallback url
     # Point the upload URL to our local FastAPI server upload endpoint
-    api_url = os.getenv("BACKEND_URL") or os.getenv("NEXT_PUBLIC_API_URL") or os.getenv("FRONTEND_URL", "http://127.0.0.1:8000").replace("3000", "8000").replace("localhost", "127.0.0.1")
+    api_url = _get_api_url()
     local_url = f"{api_url}/upload/mock-s3/{s3_key}"
     return {"url": local_url, "key": s3_key, "expires_in": 3600}
     
@@ -104,7 +124,7 @@ def generate_download_url(s3_key: str, expires_in: int = 300) -> str:
             logger.error("ClientError generating presigned download url: %s", e)
             
     # Mock / Local fallback url
-    api_url = os.getenv("BACKEND_URL") or os.getenv("NEXT_PUBLIC_API_URL") or os.getenv("FRONTEND_URL", "http://127.0.0.1:8000").replace("3000", "8000").replace("localhost", "127.0.0.1")
+    api_url = _get_api_url()
     local_url = f"{api_url}/upload/mock-s3/{s3_key}"
     return local_url
 
