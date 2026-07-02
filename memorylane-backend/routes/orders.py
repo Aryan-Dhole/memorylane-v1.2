@@ -24,6 +24,11 @@ def create_order(req: OrderCreateRequest, authorization: Optional[str] = Header(
     try:
         from utils.supabase_client import get_user_id_from_auth
         user_id = get_user_id_from_auth(authorization)
+        if user_id == "00000000-0000-0000-0000-000000000000":
+            return JSONResponse(
+                status_code=401,
+                content={"error": "Authentication required. Your session may have expired or you are not logged in. Please log in first.", "code": "UNAUTHORIZED", "status": 401}
+            )
         
         # Determine book type and event type
         book_type = req.book_type or req.event_type or "classic"
