@@ -4,7 +4,6 @@ import boto3
 from botocore.exceptions import ClientError
 from botocore.config import Config
 from dotenv import load_dotenv
-from utils.context import request_base_url
 
 # Load dotenv relative to the backend root directory
 services_dir = os.path.dirname(os.path.abspath(__file__))
@@ -73,7 +72,7 @@ def generate_upload_url(user_id: str, batch_id: str, filename: str) -> dict:
             
     # Mock / Local fallback url
     # Point the upload URL to our local FastAPI server upload endpoint
-    api_url = os.getenv("BACKEND_URL") or os.getenv("NEXT_PUBLIC_API_URL") or request_base_url.get()
+    api_url = os.getenv("BACKEND_URL") or os.getenv("NEXT_PUBLIC_API_URL")
     if api_url:
         local_url = f"{api_url.rstrip('/')}/upload/mock-s3/{s3_key}"
     else:
@@ -113,7 +112,7 @@ def generate_download_url(s3_key: str, expires_in: int = 300) -> str:
             logger.error("ClientError generating presigned download url: %s", e)
             
     # Mock / Local fallback url
-    api_url = os.getenv("BACKEND_URL") or os.getenv("NEXT_PUBLIC_API_URL") or request_base_url.get()
+    api_url = os.getenv("BACKEND_URL") or os.getenv("NEXT_PUBLIC_API_URL")
     if api_url:
         return f"{api_url.rstrip('/')}/upload/mock-s3/{s3_key}"
         

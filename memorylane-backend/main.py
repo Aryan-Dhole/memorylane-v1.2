@@ -114,19 +114,6 @@ app.add_middleware(
 )
 
 
-from utils.context import request_base_url
-
-@app.middleware("http")
-async def set_request_base_url_context(request: Request, call_next):
-    base_url = str(request.base_url)
-    token = request_base_url.set(base_url)
-    try:
-        response = await call_next(request)
-        return response
-    finally:
-        request_base_url.reset(token)
-
-
 @app.middleware("http")
 async def log_request_time(request: Request, call_next):
     start_time = time.time()
