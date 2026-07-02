@@ -1,19 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  async rewrites() {
-    let apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-    if (!apiUrl.startsWith("http://") && !apiUrl.startsWith("https://")) {
-      apiUrl = `https://${apiUrl}`;
-    }
-    apiUrl = apiUrl.replace(/\/$/, "");
-    return [
-      {
-        source: "/upload/mock-s3/:path*",
-        destination: `${apiUrl}/upload/mock-s3/:path*`,
-      },
-    ];
-  },
   images: {
     remotePatterns: [
       {
