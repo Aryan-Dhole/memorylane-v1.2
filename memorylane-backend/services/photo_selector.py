@@ -141,13 +141,13 @@ async def run_full_pipeline(
         start_idx = m["start_index"]
         moment_map[start_idx] = i
         
-    # 11. Run Vision Analysis pass with controlled concurrency (e.g., max 3 at a time) to avoid API rate limits
-    sem = asyncio.Semaphore(3)
+    # 11. Run Vision Analysis pass with controlled concurrency to avoid API rate limits
+    sem = asyncio.Semaphore(2)  # Reduced from 3 to 2 for Gemini rate limits
     async def safe_analyze(path):
         async with sem:
             res = await analyze_photo_visually(path)
-            # Add a small delay between requests to respect rate limits
-            await asyncio.sleep(0.3)
+            # Longer delay between requests to respect Gemini free-tier rate limits
+            await asyncio.sleep(2.0)
             return res
             
     visual_analysis_tasks = [safe_analyze(p) for p in sequenced_list]

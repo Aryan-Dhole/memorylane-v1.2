@@ -177,22 +177,31 @@ async def analyze_photo_visually(image_path: str) -> dict:
 
     # 1. Try Gemini Vision
     if gemini_key and "mock" not in gemini_key and HAS_GEMINI:
-        try:
-            client = genai.Client(api_key=gemini_key)
-            with Image.open(local_path) as pil_img:
-                response = await asyncio.to_thread(
-                    client.models.generate_content,
-                    model='gemini-2.5-flash',
-                    contents=[pil_img, VISUAL_ANALYSIS_PROMPT]
-                )
-                text = response.text.strip()
-                if "```json" in text:
-                    text = text.split("```json")[1].split("```")[0].strip()
-                elif "```" in text:
-                    text = text.split("```")[1].split("```")[0].strip()
-                analysis_res = json.loads(text)
-        except Exception as e:
-            logger.error("Gemini Vision analysis failed: %s", e)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                client = genai.Client(api_key=gemini_key)
+                with Image.open(local_path) as pil_img:
+                    response = await asyncio.to_thread(
+                        client.models.generate_content,
+                        model='gemini-2.5-flash',
+                        contents=[pil_img, VISUAL_ANALYSIS_PROMPT]
+                    )
+                    text = response.text.strip()
+                    if "```json" in text:
+                        text = text.split("```json")[1].split("```")[0].strip()
+                    elif "```" in text:
+                        text = text.split("```")[1].split("```")[0].strip()
+                    analysis_res = json.loads(text)
+                break  # Success, exit retry loop
+            except Exception as e:
+                if "429" in str(e) and attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 10  # 10s, 20s backoff
+                    logger.warning("Gemini 429 rate limit on visual analysis (attempt %d), waiting %ds...", attempt + 1, wait_time)
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error("Gemini Vision analysis failed: %s", e)
+                    break
 
     # 2. Try Claude Vision
     if not analysis_res and anthropic_key and "mock" not in anthropic_key and HAS_ANTHROPIC:
@@ -369,25 +378,34 @@ async def generate_single_caption(
 
     # 1. Try Gemini
     if gemini_key and "mock" not in gemini_key and HAS_GEMINI:
-        try:
-            from google.genai import types
-            client = genai.Client(api_key=gemini_key)
-            response = await asyncio.to_thread(
-                client.models.generate_content,
-                model='gemini-2.5-flash',
-                contents=[formatted_prompt],
-                config=types.GenerateContentConfig(
-                    temperature=0.85,
-                    system_instruction="You are an expert storyteller writing highly unique, non-repetitive captions for a premium photo gallery. Never repeat sentence structures or key themes from the previous caption."
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                from google.genai import types
+                client = genai.Client(api_key=gemini_key)
+                response = await asyncio.to_thread(
+                    client.models.generate_content,
+                    model='gemini-2.5-flash',
+                    contents=[formatted_prompt],
+                    config=types.GenerateContentConfig(
+                        temperature=0.85,
+                        system_instruction="You are an expert storyteller writing highly unique, non-repetitive captions for a premium photo gallery. Never repeat sentence structures or key themes from the previous caption."
+                    )
                 )
-            )
-            caption = response.text.strip()
-            if caption:
-                if caption.startswith('"') and caption.endswith('"'):
-                    caption = caption[1:-1]
-                caption_res = caption
-        except Exception as e:
-            logger.error("Gemini text caption generation failed: %s", e)
+                caption = response.text.strip()
+                if caption:
+                    if caption.startswith('"') and caption.endswith('"'):
+                        caption = caption[1:-1]
+                    caption_res = caption
+                break  # Success, exit retry loop
+            except Exception as e:
+                if "429" in str(e) and attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 10
+                    logger.warning("Gemini 429 rate limit on caption gen (attempt %d), waiting %ds...", attempt + 1, wait_time)
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error("Gemini text caption generation failed: %s", e)
+                    break
 
     # 2. Try Claude
     if not caption_res and anthropic_key and "mock" not in anthropic_key and HAS_ANTHROPIC:
@@ -502,7 +520,7 @@ async def generate_captions_sequential(photos: list, event_context: dict) -> lis
         captions.append(caption)
         prev_caption = caption
         
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(1.5)  # Respect Gemini rate limits
         
     return captions
 
@@ -532,6 +550,6 @@ async def generate_captions_batched(photos: list, event_context: dict) -> list:
         all_captions.extend(batch_captions)
         
         # Small delay between batches to respect rate limits
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(5)  # Increased delay between batches to respect Gemini rate limits
     
     return all_captions

@@ -138,3 +138,46 @@ def delete_batch(batch_prefix: str) -> bool:
             logger.error("Failed to delete local mock S3 prefix directory: %s", e)
             
     return True
+
+
+def download_to_temp(s3_key: str) -> str:
+    """
+    Downloads an S3 object to a local temp directory and returns the local path.
+    In dev mode (no real S3), resolves from local_s3_bucket.
+    Returns the local path or empty string on failure.
+    """
+    if not s3_key:
+        return ""
+
+    # 1. Check if it's already a local path that exists
+    if os.path.exists(s3_key):
+        return s3_key
+
+    # 2. Check local_s3_bucket fallback (dev mode)
+    local_resolved = os.path.join(LOCAL_S3_DIR, s3_key)
+    if os.path.exists(local_resolved):
+        return local_resolved
+
+    # 3. Try downloading from real S3
+    bucket_name = os.getenv("S3_BUCKET_NAME", "memorylane-photos")
+    s3_client = get_s3_client()
+    if s3_client:
+        try:
+            import tempfile
+            temp_dir = os.path.join(tempfile.gettempdir(), "memorylane_pipeline")
+            os.makedirs(temp_dir, exist_ok=True)
+            # Use s3_key as relative path within temp dir
+            local_path = os.path.join(temp_dir, s3_key.replace("/", os.sep))
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            # Skip re-download if already cached in temp
+            if os.path.exists(local_path):
+                return local_path
+            s3_client.download_file(bucket_name, s3_key, local_path)
+            logger.info("Downloaded S3 object to temp: %s", local_path)
+            return local_path
+        except ClientError as e:
+            logger.error("Failed to download S3 object %s: %s", s3_key, e)
+        except Exception as e:
+            logger.error("Unexpected error downloading S3 object %s: %s", s3_key, e)
+
+    return ""

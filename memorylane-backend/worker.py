@@ -79,11 +79,17 @@ async def process_job(job):
             logger.warning("No photos uploaded for trial batch %s", batch_id)
             return
 
+        # 2b. Download S3 files to local temp for pipeline processing
+        local_image_paths = []
+        for s3_key in image_paths:
+            local_path = s3_service.download_to_temp(s3_key)
+            local_image_paths.append(local_path if local_path else s3_key)
+
         # 3. Run AI Pipeline
         try:
             result = await asyncio.wait_for(
                 run_full_pipeline(
-                    image_paths=image_paths,
+                    image_paths=local_image_paths,
                     target_count=10,
                     event_type=job.data.get("event_type") or "wedding",
                     caption_style=job.data.get("caption_style") or "poetic",
@@ -182,11 +188,25 @@ async def process_job(job):
         logger.warning("No photos uploaded for batch %s", batch_id)
         return
 
+    # 3b. Download S3 files to local temp for pipeline processing
+    local_image_paths = []
+    s3_key_to_local = {}
+    for s3_key in image_paths:
+        local_path = s3_service.download_to_temp(s3_key)
+        if local_path:
+            local_image_paths.append(local_path)
+            s3_key_to_local[s3_key] = local_path
+        else:
+            # Fallback: pass s3_key as-is (will hit mock fallback in dev)
+            local_image_paths.append(s3_key)
+            s3_key_to_local[s3_key] = s3_key
+    logger.info("Downloaded %d/%d photos to local temp for pipeline", len([p for p in local_image_paths if os.path.exists(p)]), len(image_paths))
+
     # 4. Run AI Pipeline
-    logger.info("Executing curation pipeline on %d photos...", len(image_paths))
+    logger.info("Executing curation pipeline on %d photos...", len(local_image_paths))
     result = await asyncio.wait_for(
         run_full_pipeline(
-            image_paths=image_paths,
+            image_paths=local_image_paths,
             target_count=target_count,
             event_type=event_type,
             caption_style=caption_style,
@@ -196,6 +216,12 @@ async def process_job(job):
         ),
         timeout=600.0
     )
+
+    # 4b. Remap local temp paths back to S3 keys in pipeline results
+    local_to_s3 = {v: k for k, v in s3_key_to_local.items()}
+    for photo in result.get("selected_photos", []):
+        if photo["path"] in local_to_s3:
+            photo["path"] = local_to_s3[photo["path"]]
 
     # 5. Drop previous moments & face clusters to avoid duplication
     try:
@@ -287,7 +313,7 @@ async def process_job(job):
             "gallery_live": False,
             "review_deadline": review_deadline.isoformat(),
             "pipeline_completed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "pipeline_duration_seconds": result.get("processing_time_seconds"),
+            "pipeline_duration_seconds": int(result.get("processing_time_seconds") or 0),
             "expires_at": expires_at
         }).eq("id", order_id).execute()
     except Exception as e:
