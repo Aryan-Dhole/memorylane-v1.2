@@ -439,32 +439,47 @@ def get_user_dashboard_galleries(authorization: Optional[str] = Header(None)):
         .execute()
         
     galleries = []
-    for ev in (events_res.data or []):
-        # Fetch selected photos count
-        p_count = 0
-        batch_res = supabase.table("photo_batches").select("id").eq("order_id", ev["id"]).execute()
-        if batch_res.data:
-            p_res = supabase.table("photos").select("id", count="exact").eq("batch_id", batch_res.data[0]["id"]).eq("is_selected", True).execute()
-            p_count = p_res.count or 0
-            
-        galleries.append({
-            "id": ev["id"],
-            "event_name": ev.get("event_name") or "Unnamed Event",
-            "slug": ev.get("event_slug") or "",
-            "status": ev.get("status", "draft"),
-            "tier": ev.get("tier", "free"),
-            "gallery_live": ev.get("gallery_live", False),
-            "view_count": ev.get("view_count", 0),
-            "photo_count": p_count,
-            "created_at": ev.get("created_at"),
-            "expires_at": ev.get("expires_at"),
-            "review_deadline": ev.get("review_deadline"),
-            "published_at": ev.get("published_at"),
-            "auto_published": ev.get("auto_published", False),
-            "share_url": ev.get("share_url")
-        })
+    orders_data = events_res.data or []
+    if orders_data:
+        order_ids = [ev["id"] for ev in orders_data]
         
+        # Batch query all photo batches for these orders
+        batches_res = supabase.table("photo_batches").select("id", "order_id").in_("order_id", order_ids).execute()
+        batches_data = batches_res.data or []
+        order_to_batch = {b["order_id"]: b["id"] for b in batches_data}
+        batch_ids = [b["id"] for b in batches_data]
+        
+        # Batch query counts of selected photos
+        photo_counts = {}
+        if batch_ids:
+            photos_res = supabase.table("photos").select("batch_id").in_("batch_id", batch_ids).eq("is_selected", True).execute()
+            for p in (photos_res.data or []):
+                b_id = p["batch_id"]
+                photo_counts[b_id] = photo_counts.get(b_id, 0) + 1
+                
+        for ev in orders_data:
+            batch_id = order_to_batch.get(ev["id"])
+            p_count = photo_counts.get(batch_id, 0) if batch_id else 0
+            
+            galleries.append({
+                "id": ev["id"],
+                "event_name": ev.get("event_name") or ev.get("book_title") or "Unnamed Event",
+                "slug": ev.get("event_slug") or "",
+                "status": ev.get("status", "draft"),
+                "tier": ev.get("tier", "free"),
+                "gallery_live": ev.get("gallery_live", False),
+                "view_count": ev.get("view_count", 0),
+                "photo_count": p_count,
+                "created_at": ev.get("created_at"),
+                "expires_at": ev.get("expires_at"),
+                "review_deadline": ev.get("review_deadline"),
+                "published_at": ev.get("published_at"),
+                "auto_published": ev.get("auto_published", False),
+                "share_url": ev.get("share_url")
+            })
+            
     return {"galleries": galleries}
+
 
 @router.patch("/{slug}/settings")
 def update_gallery_settings(slug: str, req: GallerySettingsPatch, authorization: Optional[str] = Header(None)):

@@ -46,7 +46,7 @@ async def run_full_pipeline(
         cutoff_idx = int(len(sorted_scores) * 0.4)
         quality_cutoff = sorted_scores[cutoff_idx]
         surviving_quality = [p for p in surviving_quality if quality_results[p]["final_quality_score"] >= quality_cutoff]
-        logger.info("Quality cutoff filter (bottom 40% rejected): kept %d of %d photos", len(surviving_quality), len(image_paths))
+        logger.info("Quality cutoff filter (bottom 40 percent rejected): kept %d of %d photos", len(surviving_quality), len(image_paths))
 
     # 3 & 4. Run face detector AND aesthetic scorer on surviving quality images in parallel
     face_tasks = [asyncio.to_thread(detect_faces, path) for path in surviving_quality]

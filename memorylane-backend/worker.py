@@ -225,6 +225,8 @@ async def process_job(job):
 
     # 5. Drop previous moments & face clusters to avoid duplication
     try:
+        # Null out moment_id on photos first to prevent FK constraint violations
+        supabase.table("photos").update({"moment_id": None}).eq("batch_id", batch_id).execute()
         supabase.table("gallery_moments").delete().eq("order_id", order_id).execute()
         supabase.table("face_clusters").delete().eq("order_id", order_id).execute()
     except Exception as e:
