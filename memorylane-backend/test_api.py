@@ -157,5 +157,43 @@ class TestMemoryLanePipeline(unittest.TestCase):
             mock_supabase.table.assert_any_call("trial_sessions")
             mock_supabase.table.assert_any_call("photo_batches")
 
+    def test_create_order_empty_date(self):
+        """Verify that create_order sanitizes empty strings to None before database insert."""
+        from routes.orders import create_order
+        from models.schemas import OrderCreateRequest
+        from unittest.mock import patch, MagicMock
+
+        req = OrderCreateRequest(
+            tier="free",
+            book_title="My Book",
+            event_name="My Event",
+            event_date=" ",  # whitespace-only
+            event_location="" # empty string
+        )
+
+        with patch("routes.orders.supabase") as mock_supabase, \
+             patch("utils.supabase_client.get_user_id_from_auth") as mock_get_user_id:
+            
+            mock_get_user_id.return_value = "mock_user_id"
+            
+            # Setup mock table and execute chain
+            mock_table = MagicMock()
+            mock_insert = MagicMock()
+            
+            mock_supabase.table.return_value = mock_table
+            mock_table.insert.return_value = mock_insert
+            mock_insert.execute.return_value = MagicMock(data=[{"id": "order_123"}])
+            
+            # Call create_order
+            res = create_order(req, authorization="Bearer mock_token")
+            
+            # Assertions
+            mock_table.insert.assert_called_once()
+            called_args = mock_table.insert.call_args[0][0]
+            
+            # Check that empty date and location were converted to None
+            self.assertIsNone(called_args["event_date"])
+            self.assertIsNone(called_args["event_location"])
+
 if __name__ == "__main__":
     unittest.main()

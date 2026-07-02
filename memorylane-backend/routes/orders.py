@@ -59,6 +59,10 @@ def create_order(req: OrderCreateRequest, authorization: Optional[str] = Header(
         slug_base = re.sub(r'[\s_-]+', '-', slug_base)
         event_slug = f"{slug_base}-{uuid.uuid4().hex[:6]}"
         
+        # Sanitize empty strings to None (SQL NULL) to avoid Postgrest date parsing errors
+        event_date = req.event_date.strip() if req.event_date and req.event_date.strip() else None
+        event_location = req.event_location.strip() if req.event_location and req.event_location.strip() else None
+
         order_data = {
             "user_id": user_id,
             "status": "draft",
@@ -70,8 +74,8 @@ def create_order(req: OrderCreateRequest, authorization: Optional[str] = Header(
             "language": req.language,
             "book_title": req.event_name or req.book_title or "My Event",
             "event_name": req.event_name or req.book_title or "My Event",
-            "event_date": req.event_date,
-            "event_location": req.event_location,
+            "event_date": event_date,
+            "event_location": event_location,
             "event_slug": event_slug,
             "share_token": share_token
         }

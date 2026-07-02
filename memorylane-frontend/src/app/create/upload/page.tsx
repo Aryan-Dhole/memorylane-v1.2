@@ -146,9 +146,9 @@ function UploadAndAIFlowContent() {
       const orderRes = await api.post("/orders", {
         book_type: bookType,
         tier: tier,
-        event_name: eventName,
-        event_date: eventDate,
-        event_location: eventLocation,
+        event_name: eventName || undefined,
+        event_date: eventDate || undefined,
+        event_location: eventLocation || undefined,
         total_price: orderTotal * 100
       }, {
         headers: { Authorization: `Bearer ${token}` }
