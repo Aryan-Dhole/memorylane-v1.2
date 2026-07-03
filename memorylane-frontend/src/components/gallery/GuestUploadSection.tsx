@@ -4,6 +4,7 @@ import React, { useState } from "react"
 import { useDropzone } from "react-dropzone"
 import { Upload, Check, AlertCircle, Loader2 } from "lucide-react"
 import { API_BASE_URL } from "@/lib/api"
+import { resizeAndCompressImage } from "@/lib/utils"
 
 interface GuestUploadSectionProps {
   slug: string;
@@ -38,7 +39,9 @@ export default function GuestUploadSection({ slug, onUploadSuccess }: GuestUploa
         const formData = new FormData()
         formData.append("uploader_name", uploaderName || "Guest")
         formData.append("session_id", guestSession)
-        formData.append("file", file)
+        
+        const compressedBlob = await resizeAndCompressImage(file)
+        formData.append("file", new File([compressedBlob], file.name, { type: "image/jpeg" }))
 
         const response = await fetch(`${API_BASE_URL}/gallery/${slug}/upload`, {
           method: "POST",

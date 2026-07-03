@@ -7,6 +7,7 @@ import { motion } from "framer-motion"
 import { Sparkles, UploadCloud, ChevronRight, CheckCircle2, Image as ImageIcon, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
+import { resizeAndCompressImage } from "@/lib/utils"
 import Logo from "@/components/logo"
 
 const THEMES = [
@@ -58,21 +59,38 @@ export default function FreeTrialLanding() {
       })
       const { trial_id, upload_urls } = startRes.data
 
-      // 2. Upload each file to presigned URL
-      const uploadedKeys: string[] = []
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
-        const urlItem = upload_urls[i]
+      // 2. Upload files in parallel with compression
+      const CONCURRENCY_LIMIT = 5
+      const uploadQueue = [...files.entries()]
+      const uploadedKeys: string[] = new Array(files.length)
+      let completedCount = 0
 
-        await fetch(urlItem.url, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": "image/jpeg" }
-        })
+      const worker = async () => {
+        while (uploadQueue.length > 0) {
+          const item = uploadQueue.shift()
+          if (!item) break
+          const [index, file] = item
+          const urlItem = upload_urls[index]
 
-        uploadedKeys.push(urlItem.s3_key)
-        setUploadProgress(Math.round(((i + 1) / files.length) * 100))
+          try {
+            const compressedBlob = await resizeAndCompressImage(file)
+            await fetch(urlItem.url, {
+              method: "PUT",
+              body: compressedBlob,
+              headers: { "Content-Type": "image/jpeg" }
+            })
+            uploadedKeys[index] = urlItem.s3_key
+            completedCount++
+            setUploadProgress(Math.round((completedCount / files.length) * 100))
+          } catch (err) {
+            console.error(`Failed to upload file at index ${index}:`, err)
+            throw err
+          }
+        }
       }
+
+      const workers = Array.from({ length: Math.min(CONCURRENCY_LIMIT, files.length) }, worker)
+      await Promise.all(workers)
 
       // 3. Confirm trial session files upload
       await api.post("/trial/confirm", {

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { api } from "@/lib/api"
 import { supabase } from "@/lib/supabase"
+import { resizeAndCompressImage } from "@/lib/utils"
 
 function UploadAndAIFlowContent() {
   const router = useRouter()
@@ -179,9 +180,10 @@ function UploadAndAIFlowContent() {
           const urlItem = upload_urls[index]
 
           try {
+            const compressedBlob = await resizeAndCompressImage(file)
             await fetch(urlItem.url, {
               method: "PUT",
-              body: file,
+              body: compressedBlob,
               headers: { "Content-Type": "image/jpeg" }
             })
             uploadedKeys[index] = urlItem.s3_key
