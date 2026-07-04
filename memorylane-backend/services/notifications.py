@@ -17,7 +17,7 @@ try:
 except ImportError:
     HAS_TWILIO = False
 
-SENDER_EMAIL = os.getenv("SENDER_EMAIL", "onboarding@resend.dev")
+SENDER_EMAIL = os.getenv("SENDER_EMAIL", "hello@memorylaneapps.in")
 
 def _get_twilio_client():
     if not HAS_TWILIO:
