@@ -18,7 +18,8 @@ import {
   Save,
   Loader2,
   Eye,
-  AlertTriangle
+  AlertTriangle,
+  Trash2
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Logo from "@/components/logo"
@@ -48,6 +49,11 @@ export default function UserDashboard() {
   const [studioWebsite, setStudioWebsite] = useState("")
   const [studioLocation, setStudioLocation] = useState("")
   const [savingProfile, setSavingProfile] = useState(false)
+
+  // Delete gallery state
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null)
+  const [deleteConfirmText, setDeleteConfirmText] = useState("")
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Countdown timers state for review_ready galleries
   const [countdowns, setCountdowns] = useState<Record<string, string>>({})
@@ -148,7 +154,30 @@ export default function UserDashboard() {
     const confirmLogout = window.confirm("Are you sure you want to log out of your MemoryLane account?")
     if (confirmLogout) {
       await supabase.auth.signOut()
-      window.location.href = "/"
+      router.push("/")
+    }
+  }
+
+  const handleDeleteGallery = async () => {
+    if (!deleteTarget) return
+    setIsDeleting(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      
+      await api.delete(`/orders/${deleteTarget.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      
+      setDeleteTarget(null)
+      setDeleteConfirmText("")
+      // Reload dashboard list
+      await loadDashboard()
+    } catch (err) {
+      console.error("Failed to delete gallery:", err)
+      alert("Failed to delete gallery. Please try again.")
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -326,16 +355,16 @@ export default function UserDashboard() {
             <p className="text-xs text-zinc-400 font-light font-geist-mono mt-1">{user?.email}</p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
             {!profile?.is_photographer && (
-              <Link href="/photographer">
-                <Button variant="outline" className="border-zinc-200 hover:bg-zinc-50 rounded-full px-6 py-5 text-[10px] font-bold uppercase tracking-widest font-geist-mono">
+              <Link href="/photographer" className="w-full sm:w-auto">
+                <Button variant="outline" className="w-full border-zinc-200 hover:bg-zinc-50 rounded-full px-6 py-5 text-[10px] font-bold uppercase tracking-widest font-geist-mono">
                   photographer join
                 </Button>
               </Link>
             )}
-            <Link href="/create">
-              <Button className="bg-zinc-900 hover:bg-zinc-800 text-white rounded-full px-6 py-5 text-[10px] font-bold uppercase tracking-widest font-geist-mono shadow-md group shrink-0">
+            <Link href="/create" className="w-full sm:w-auto">
+              <Button className="w-full bg-zinc-900 hover:bg-zinc-800 text-white rounded-full px-6 py-5 text-[10px] font-bold uppercase tracking-widest font-geist-mono shadow-md group shrink-0">
                 Create Event Gallery
                 <ArrowRight className="w-3.5 h-3.5 ml-2 group-hover:translate-x-0.5 transition-transform" />
               </Button>
@@ -344,16 +373,16 @@ export default function UserDashboard() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-white border border-zinc-200/60 rounded-2xl p-6 shadow-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white border border-zinc-200/60 rounded-2xl p-4 sm:p-6 shadow-sm">
             <span className="block text-[9px] font-bold font-geist-mono text-zinc-400 uppercase tracking-wider">Galleries Built</span>
             <span className="block text-2xl font-serif font-black text-zinc-800 mt-2">{totalGalleries}</span>
           </div>
-          <div className="bg-white border border-zinc-200/60 rounded-2xl p-6 shadow-sm">
+          <div className="bg-white border border-zinc-200/60 rounded-2xl p-4 sm:p-6 shadow-sm">
             <span className="block text-[9px] font-bold font-geist-mono text-zinc-400 uppercase tracking-wider">AI Live</span>
             <span className="block text-2xl font-serif font-black text-[#c9a96e] mt-2">{completedGalleries} live</span>
           </div>
-          <div className="bg-white border border-zinc-200/60 rounded-2xl p-6 shadow-sm">
+          <div className="bg-white border border-zinc-200/60 rounded-2xl p-4 sm:p-6 shadow-sm">
             <span className="block text-[9px] font-bold font-geist-mono text-zinc-400 uppercase tracking-wider">Total Views</span>
             <span className="block text-2xl font-serif font-black text-zinc-800 mt-2">{totalViews}</span>
           </div>
@@ -486,6 +515,15 @@ export default function UserDashboard() {
                           </div>
                         </div>
                       )}
+
+                      <Button
+                        variant="ghost"
+                        onClick={() => setDeleteTarget(order)}
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl text-[9px] font-bold font-geist-mono uppercase tracking-wider h-10 px-4"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 mr-2" />
+                        Delete
+                      </Button>
                     </div>
                   </motion.div>
                 )
@@ -495,6 +533,64 @@ export default function UserDashboard() {
         </div>
 
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white border border-zinc-200 rounded-[32px] max-w-md w-full p-8 shadow-premium space-y-6"
+          >
+            <div className="space-y-2 text-center select-none">
+              <div className="w-12 h-12 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-serif font-black text-zinc-900">Delete Gallery?</h3>
+              <p className="text-zinc-400 text-xs font-light max-w-sm mx-auto leading-relaxed">
+                This action is permanent. All uploaded photos, captions, face clusters, and the public sharing link will be deleted forever.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-zinc-50 border border-zinc-150 p-4 rounded-xl text-center select-none">
+                <p className="text-[10px] font-bold font-geist-mono uppercase tracking-wider text-zinc-400 mb-1">Type name to confirm</p>
+                <p className="text-sm font-serif font-black text-zinc-800">
+                  {deleteTarget.event_name || deleteTarget.book_title || "My Event Gallery"}
+                </p>
+              </div>
+
+              <Input
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="Re-enter gallery name exactly"
+                className="bg-[#fafafa] border-zinc-200 text-xs rounded-xl h-11"
+              />
+            </div>
+
+            <div className="flex gap-3 w-full">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setDeleteTarget(null)
+                  setDeleteConfirmText("")
+                }}
+                className="flex-1 text-[10px] font-bold font-geist-mono uppercase tracking-wider h-11"
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={deleteConfirmText !== (deleteTarget.event_name || deleteTarget.book_title || "My Event Gallery") || isDeleting}
+                onClick={handleDeleteGallery}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-zinc-100 disabled:text-zinc-300 text-white rounded-xl text-[10px] font-bold font-geist-mono uppercase tracking-wider h-11 shadow-sm"
+              >
+                {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <Trash2 className="w-3.5 h-3.5 mr-2" />}
+                Delete Gallery
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }

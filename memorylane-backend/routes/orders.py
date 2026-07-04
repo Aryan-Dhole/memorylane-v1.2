@@ -201,3 +201,42 @@ def update_status(order_id: str, req: OrderUpdateStatusRequest, x_admin_password
             status_code=400,
             content={"error": "Failed to update order status", "code": "STATUS_UPDATE_ERROR", "status": 400}
         )
+
+@router.delete("/{order_id}")
+def delete_order(order_id: str, authorization: Optional[str] = Header(None)):
+    """
+    Deletes the order, S3 uploaded files, and all associated database records (via cascade).
+    Scoped to the owner of the order.
+    """
+    from utils.supabase_client import get_user_id_from_auth
+    from services import s3_service
+    user_id = get_user_id_from_auth(authorization)
+    
+    try:
+        # 1. Verify ownership of the order
+        ord_res = supabase.table("orders").select("user_id").eq("id", order_id).execute()
+        if not ord_res.data:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if ord_res.data[0]["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to delete this order")
+            
+        # 2. Delete uploaded S3 files first (if batch exists)
+        batch_res = supabase.table("photo_batches").select("id").eq("order_id", order_id).execute()
+        if batch_res.data:
+            batch_id = batch_res.data[0]["id"]
+            # Delete S3 prefix: uploads/{user_id}/{batch_id}
+            s3_service.delete_batch(f"uploads/{user_id}/{batch_id}")
+            
+        # 3. Delete the order record (PostgreSQL CASCADE will clean up orders, photos, and batches)
+        supabase.table("orders").delete().eq("id", order_id).execute()
+        
+        return {"success": True, "message": "Order and all associated data deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to delete order")
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Failed to delete order", "code": "ORDER_DELETE_ERROR", "status": 400}
+        )

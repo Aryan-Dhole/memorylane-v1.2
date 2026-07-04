@@ -164,8 +164,8 @@ export default function HomePage() {
           <span className="font-geist-mono font-bold text-xs uppercase tracking-widest text-white">MemoryLane</span>
         </div>
 
-        <div className="flex items-center gap-6 pointer-events-auto">
-          <Link href="/photographer" className="text-[11px] font-bold uppercase tracking-widest font-geist-mono text-white/50 hover:text-white transition-colors">
+        <div className="flex items-center gap-3 sm:gap-6 pointer-events-auto">
+          <Link href="/photographer" className="hidden sm:inline-block text-[11px] font-bold uppercase tracking-widest font-geist-mono text-white/50 hover:text-white transition-colors">
             For Photographers
           </Link>
           {sessionUser ? (
@@ -182,8 +182,9 @@ export default function HomePage() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              <Button className="rounded-full bg-white text-black hover:bg-zinc-200 text-[10px] font-bold uppercase tracking-widest font-geist-mono h-9 px-6 shadow-lg">
-                Create Gallery
+              <Button className="rounded-full bg-white text-black hover:bg-zinc-200 text-[10px] font-bold uppercase tracking-widest font-geist-mono h-9 px-4 sm:px-6 shadow-lg">
+                <span className="hidden sm:inline">Create Gallery</span>
+                <span className="sm:hidden">Create</span>
               </Button>
             </motion.div>
           </Link>
