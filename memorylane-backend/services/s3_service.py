@@ -31,7 +31,8 @@ def get_s3_client():
     aws_region = os.getenv("AWS_REGION", "ap-south-1")
     
     if not aws_access_key or "mock" in aws_access_key or not aws_secret_key or "mock" in aws_secret_key:
-        # Return None to trigger local disk fallback
+        if os.getenv("ENV") == "production":
+            raise ValueError("AWS Credentials not configured or invalid in production!")
         return None
         
     try:
@@ -49,7 +50,9 @@ def get_s3_client():
         )
         return _s3_client
     except Exception as e:
-        logger.error("Failed to initialize boto3 S3 client: %s. Using local fallback.", e)
+        logger.error("Failed to initialize boto3 S3 client: %s.", e)
+        if os.getenv("ENV") == "production":
+            raise e
         return None
 
 def _get_api_url() -> str:
@@ -96,7 +99,12 @@ def generate_upload_url(user_id: str, batch_id: str, filename: str) -> dict:
             return {"url": url, "key": s3_key, "expires_in": 3600}
         except ClientError as e:
             logger.error("ClientError generating presigned upload url: %s", e)
+            if os.getenv("ENV") == "production":
+                raise ValueError(f"Failed to generate pre-signed upload URL: {e}")
             
+    if os.getenv("ENV") == "production":
+        raise ValueError("S3 client not available in production - cannot generate upload URL")
+
     # Mock / Local fallback url
     # Point the upload URL to our local FastAPI server upload endpoint
     api_url = _get_api_url()
@@ -129,7 +137,12 @@ def generate_download_url(s3_key: str, expires_in: int = 300) -> str:
             return url
         except ClientError as e:
             logger.error("ClientError generating presigned download url: %s", e)
+            if os.getenv("ENV") == "production":
+                raise ValueError(f"Failed to generate pre-signed download URL: {e}")
             
+    if os.getenv("ENV") == "production":
+        raise ValueError("S3 client not available in production - cannot generate download URL")
+
     # Mock / Local fallback url
     api_url = _get_api_url()
     local_url = f"{api_url}/upload/mock-s3/{s3_key}"

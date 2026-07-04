@@ -140,86 +140,71 @@ def confirm_upload(req: UploadConfirmRequest):
         )
 
 # --- MOCK S3 ENDPOINTS FOR OFFLINE LOCAL DEVELOPMENT ---
-# These endpoints are disabled in production (ENV=production)
-_is_production = os.getenv("ENV", "development").lower() == "production"
 
-if not _is_production:
-
-    @router.put("/mock-s3/uploads/{user_id}/{batch_id}/{filename}")
-    async def mock_s3_upload(user_id: str, batch_id: str, filename: str, request: Request):
-        """
-        Local mock endpoint simulating AWS S3 direct upload destination.
-        Writes file body directly to local disk.
-        """
-        target_dir = os.path.join(LOCAL_S3_DIR, "uploads", user_id, batch_id)
-        os.makedirs(target_dir, exist_ok=True)
+@router.put("/mock-s3/{file_path:path}")
+async def mock_s3_upload(file_path: str, request: Request):
+    """
+    Local mock endpoint simulating AWS S3 direct upload destination.
+    Writes file body directly to local disk.
+    """
+    if os.getenv("ENV") == "production":
+        raise HTTPException(status_code=404, detail="Mock S3 not available in production")
         
-        file_path = os.path.join(target_dir, filename)
-        body = await request.body()
+    target_path = os.path.join(LOCAL_S3_DIR, file_path)
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    body = await request.body()
+    try:
+        with open(target_path, "wb") as f:
+            f.write(body)
+        logger.info("Saved local mock S3 file: %s", target_path)
+        return {"message": "Upload successful (local mock S3)"}
+    except Exception as e:
+        logger.error("Failed to save local mock S3 file: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/mock-s3/{file_path:path}")
+async def serve_mock_s3(file_path: str):
+    """
+    Local mock endpoint simulating AWS S3 download link.
+    Serves the file from local disk, or redirects to a high-quality placeholder if missing.
+    """
+    if os.getenv("ENV") == "production":
+        raise HTTPException(status_code=404, detail="Mock S3 not available in production")
         
-        try:
-            with open(file_path, "wb") as f:
-                f.write(body)
-            logger.info("Saved local mock S3 file: %s", file_path)
-            return {"message": "Upload successful (local mock S3)"}
-        except Exception as e:
-            logger.error("Failed to save local mock S3 file: %s", e)
-            raise HTTPException(status_code=500, detail=str(e))
+    local_path = os.path.join(LOCAL_S3_DIR, file_path)
+    if not os.path.exists(local_path):
+        import re
+        filename = os.path.basename(file_path)
+        match = re.search(r'\d+', filename)
+        idx = int(match.group()) if match else 0
+        
+        unsplash_urls = [
+            "https://images.unsplash.com/photo-1519741497674-611481863552?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1507504038482-762103743ec1?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1519225495810-7512c696505a?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1520854221256-174b1ec358ef?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1583939003579-730e3918a45a?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&auto=format&fit=crop",
+        ]
+        placeholder_url = unsplash_urls[idx % len(unsplash_urls)]
+        logger.info("Local mock file %s not found. Redirecting to Unsplash placeholder: %s", filename, placeholder_url)
+        return RedirectResponse(url=placeholder_url)
+        
+    return FileResponse(local_path)
 
-    @router.get("/mock-s3/uploads/{user_id}/{batch_id}/{filename}")
-    def mock_s3_download(user_id: str, batch_id: str, filename: str):
-        """
-        Local mock endpoint simulating AWS S3 download link.
-        Serves the file from local disk, or redirects to a high-quality placeholder if missing.
-        """
-        file_path = os.path.join(LOCAL_S3_DIR, "uploads", user_id, batch_id, filename)
-        if not os.path.exists(file_path):
-            # Premium Unsplash placeholders (already whitelisted in next.config.ts)
-            import re
-            match = re.search(r'\d+', filename)
-            idx = int(match.group()) if match else 0
-            
-            unsplash_urls = [
-                "https://images.unsplash.com/photo-1519741497674-611481863552?w=800&auto=format&fit=crop", # Wedding
-                "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?w=800&auto=format&fit=crop", # Bride/Groom
-                "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&auto=format&fit=crop", # Reception
-                "https://images.unsplash.com/photo-1507504038482-762103743ec1?w=800&auto=format&fit=crop", # Details
-                "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?w=800&auto=format&fit=crop", # Couple kiss
-                "https://images.unsplash.com/photo-1519225495810-7512c696505a?w=800&auto=format&fit=crop", # Toast
-                "https://images.unsplash.com/photo-1520854221256-174b1ec358ef?w=800&auto=format&fit=crop", # Bridal party
-                "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=800&auto=format&fit=crop", # Rings
-                "https://images.unsplash.com/photo-1583939003579-730e3918a45a?w=800&auto=format&fit=crop", # First dance
-                "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&auto=format&fit=crop", # Honeymoon
-            ]
-            placeholder_url = unsplash_urls[idx % len(unsplash_urls)]
-            logger.info("Local mock file %s not found. Redirecting to Unsplash placeholder: %s", filename, placeholder_url)
-            return RedirectResponse(url=placeholder_url)
-            
-        return FileResponse(file_path)
-
-    # Add fallback for S3 processed images serving
-    @router.get("/mock-s3/processed/{order_id}/selected/{filename}")
-    def mock_s3_download_processed(order_id: str, filename: str):
-        file_path = os.path.join(LOCAL_S3_DIR, "processed", order_id, "selected", filename)
-        if not os.path.exists(file_path):
-            import re
-            match = re.search(r'\d+', filename)
-            idx = int(match.group()) if match else 0
-            
-            unsplash_urls = [
-                "https://images.unsplash.com/photo-1519741497674-611481863552?w=800&auto=format&fit=crop",
-                "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?w=800&auto=format&fit=crop",
-                "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&auto=format&fit=crop",
-                "https://images.unsplash.com/photo-1507504038482-762103743ec1?w=800&auto=format&fit=crop",
-                "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?w=800&auto=format&fit=crop",
-                "https://images.unsplash.com/photo-1519225495810-7512c696505a?w=800&auto=format&fit=crop",
-                "https://images.unsplash.com/photo-1520854221256-174b1ec358ef?w=800&auto=format&fit=crop",
-                "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=800&auto=format&fit=crop",
-                "https://images.unsplash.com/photo-1583939003579-730e3918a45a?w=800&auto=format&fit=crop",
-                "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&auto=format&fit=crop"
-            ]
-            placeholder_url = unsplash_urls[idx % len(unsplash_urls)]
-            logger.info("Local processed file %s not found. Redirecting to Unsplash placeholder: %s", filename, placeholder_url)
-            return RedirectResponse(url=placeholder_url)
-        return FileResponse(file_path)
+@router.get("/presigned-url/{s3_key:path}")
+def get_presigned_url(s3_key: str):
+    """
+    Generates a pre-signed S3 download URL for a given S3 key.
+    """
+    try:
+        url = s3_service.generate_download_url(s3_key)
+        return {"url": url}
+    except Exception as e:
+        logger.error("Failed to generate presigned URL: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
