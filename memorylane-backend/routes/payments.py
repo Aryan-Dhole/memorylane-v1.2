@@ -147,12 +147,10 @@ def verify_payment(req: PaymentVerifyRequest, background_tasks: BackgroundTasks)
                     tier = ord_data.get("tier") or "basic"
                     recipient_phone = ord_data.get("shipping_phone") or ""
                     
-                    user_res = supabase.table("profiles").select("*").eq("id", ord_data.get("user_id")).execute()
-                    user_name = "Customer"
-                    if user_res.data:
-                        profile = user_res.data[0]
-                        user_name = profile.get("name") or "Customer"
-                        recipient_email = profile.get("email") or "customer@example.com"
+                    from utils.supabase_client import get_user_contact_info
+                    contact_info = get_user_contact_info(ord_data.get("user_id"))
+                    user_name = contact_info["name"]
+                    recipient_email = contact_info["email"]
                     
                     send_order_confirmation_email(
                         order_id=order_id,
@@ -246,13 +244,10 @@ def free_checkout(req: PaymentCreateRequest, background_tasks: BackgroundTasks, 
         tier = ord_data.get("tier") or "free"
         recipient_phone = ord_data.get("shipping_phone") or ""
         
-        user_res = supabase.table("profiles").select("*").eq("id", user_id).execute()
-        user_name = "Customer"
-        recipient_email = "customer@example.com"
-        if user_res.data:
-            profile = user_res.data[0]
-            user_name = profile.get("name") or "Customer"
-            recipient_email = profile.get("email") or "customer@example.com"
+        from utils.supabase_client import get_user_contact_info
+        contact_info = get_user_contact_info(user_id)
+        user_name = contact_info["name"]
+        recipient_email = contact_info["email"]
             
         send_order_confirmation_email(
             order_id=req.order_id,

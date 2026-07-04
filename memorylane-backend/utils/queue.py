@@ -155,16 +155,15 @@ class SimpleRedisQueue:
                                         user_phone = ord_data.get("shipping_phone") or ""
                                         total_price_rs = ord_data.get("total_price", 0) / 100.0
                                         
-                                        user_res = supabase.table("profiles").select("*").eq("id", user_id).execute()
-                                        if user_res.data:
-                                            profile = user_res.data[0]
-                                            user_name = profile.get("full_name") or "Customer"
-                                            user_email = profile.get("email") or "customer@example.com"
-                                            
-                                            from services.notifications import send_user_pipeline_failed_email, send_pipeline_failed_whatsapp
-                                            send_user_pipeline_failed_email(user_email, user_name, total_price_rs)
-                                            if user_phone:
-                                                send_pipeline_failed_whatsapp(user_phone, user_name)
+                                        from utils.supabase_client import get_user_contact_info
+                                        contact_info = get_user_contact_info(user_id)
+                                        user_name = contact_info["name"]
+                                        user_email = contact_info["email"]
+                                        
+                                        from services.notifications import send_user_pipeline_failed_email, send_pipeline_failed_whatsapp
+                                        send_user_pipeline_failed_email(user_email, user_name, total_price_rs)
+                                        if user_phone:
+                                            send_pipeline_failed_whatsapp(user_phone, user_name)
                             except Exception as fail_err:
                                 logger.error("Failed to run post-failure cleanup/refund: %s", fail_err)
                                 

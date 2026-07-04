@@ -327,11 +327,11 @@ async def process_job(job):
     user_phone = ""
     try:
         if ord_data and ord_data.get("user_id"):
-            user_res = supabase.table("profiles").select("*").eq("id", ord_data["user_id"]).execute()
-            if user_res.data:
-                user_email = user_res.data[0].get("email") or user_email
-                user_name = user_res.data[0].get("name") or user_name
-                user_phone = user_res.data[0].get("phone") or ""
+            from utils.supabase_client import get_user_contact_info
+            contact_info = get_user_contact_info(ord_data["user_id"])
+            user_email = contact_info["email"]
+            user_name = contact_info["name"]
+            user_phone = contact_info["phone"]
     except Exception as e:
         logger.error("Failed to fetch user profiles for notifications: %s", e)
 
@@ -413,11 +413,11 @@ async def handle_auto_publish(job):
         user_name = "Customer"
         user_phone = ""
         try:
-            user_res = supabase.table("profiles").select("*").eq("id", order["user_id"]).execute()
-            if user_res.data:
-                user_email = user_res.data[0].get("email") or user_email
-                user_name = user_res.data[0].get("name") or user_name
-                user_phone = user_res.data[0].get("phone") or ""
+            from utils.supabase_client import get_user_contact_info
+            contact_info = get_user_contact_info(order["user_id"])
+            user_email = contact_info["email"]
+            user_name = contact_info["name"]
+            user_phone = contact_info["phone"]
         except Exception as e:
             logger.error("Failed to fetch user profile for auto-publish notification: %s", e)
 
