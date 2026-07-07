@@ -3,6 +3,7 @@
 import React from "react"
 import { motion } from "framer-motion"
 import Image from "next/image"
+import { PhotoUnavailable } from "@/components/ui/PhotoUnavailable"
 
 interface PhotoItem {
   url: string;
@@ -56,12 +57,23 @@ export default function PhotoSection({ layoutType, photos }: PhotoSectionProps) 
         {layoutType === "single" && photos[0] && (
           <motion.div variants={itemVariants} className="w-full flex flex-col items-center gap-8">
             <div className="relative w-full aspect-[16/10] md:aspect-[21/10] rounded-3xl overflow-hidden border border-zinc-900/60 group shadow-premium-dark">
-              <img
-                src={photos[0].url}
-                alt={photos[0].caption || "MemoryLane curated photo"}
-                loading="lazy"
-                className="w-full h-full object-cover transition-transform duration-[2000ms] group-hover:scale-[1.03]"
-              />
+              {photos[0].url ? (
+                <img
+                  src={photos[0].url}
+                  alt={photos[0].caption || "MemoryLane curated photo"}
+                  loading="lazy"
+                  className="w-full h-full object-cover transition-transform duration-[2000ms] group-hover:scale-[1.03]"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.parentElement?.querySelector('.photo-fallback')?.classList.remove('hidden');
+                  }}
+                />
+              ) : (
+                <PhotoUnavailable className="w-full h-full absolute inset-0" />
+              )}
+              <div className="photo-fallback hidden absolute inset-0">
+                <PhotoUnavailable className="w-full h-full" />
+              </div>
             </div>
             {photos[0].caption && (
               <motion.p variants={captionVariants} className="text-center font-serif text-sm md:text-base italic text-[#a89f94] max-w-2xl px-6 leading-relaxed">
@@ -76,12 +88,23 @@ export default function PhotoSection({ layoutType, photos }: PhotoSectionProps) 
             {photos.slice(0, 2).map((item, idx) => (
               <motion.div key={idx} variants={itemVariants} className="flex flex-col items-center gap-8">
                 <div className="relative w-full aspect-square md:aspect-[4/3] rounded-3xl overflow-hidden border border-zinc-900/60 group shadow-premium-dark">
-                  <img
-                    src={item.url}
-                    alt={item.caption || "MemoryLane curated photo"}
-                    loading="lazy"
-                    className="w-full h-full object-cover transition-transform duration-[2000ms] group-hover:scale-[1.03]"
-                  />
+                  {item.url ? (
+                    <img
+                      src={item.url}
+                      alt={item.caption || "MemoryLane curated photo"}
+                      loading="lazy"
+                      className="w-full h-full object-cover transition-transform duration-[2000ms] group-hover:scale-[1.03]"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.parentElement?.querySelector('.photo-fallback')?.classList.remove('hidden');
+                      }}
+                    />
+                  ) : (
+                    <PhotoUnavailable className="w-full h-full absolute inset-0" />
+                  )}
+                  <div className="photo-fallback hidden absolute inset-0">
+                    <PhotoUnavailable className="w-full h-full" />
+                  </div>
                 </div>
                 {item.caption && (
                   <motion.p variants={captionVariants} className="text-center font-serif text-xs md:text-sm italic text-[#a89f94] max-w-md px-6 leading-relaxed">
@@ -96,12 +119,23 @@ export default function PhotoSection({ layoutType, photos }: PhotoSectionProps) 
         {layoutType === "portrait" && photos[0] && (
           <motion.div variants={itemVariants} className="w-full flex flex-col items-center gap-8">
             <div className="relative w-full max-w-md aspect-[3/4] rounded-3xl overflow-hidden border border-zinc-900/60 group shadow-premium-dark">
-              <img
-                src={photos[0].url}
-                alt={photos[0].caption || "MemoryLane curated photo"}
-                loading="lazy"
-                className="w-full h-full object-cover transition-transform duration-[2000ms] group-hover:scale-[1.03]"
-              />
+              {photos[0].url ? (
+                <img
+                  src={photos[0].url}
+                  alt={photos[0].caption || "MemoryLane curated photo"}
+                  loading="lazy"
+                  className="w-full h-full object-cover transition-transform duration-[2000ms] group-hover:scale-[1.03]"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.parentElement?.querySelector('.photo-fallback')?.classList.remove('hidden');
+                  }}
+                />
+              ) : (
+                <PhotoUnavailable className="w-full h-full absolute inset-0" />
+              )}
+              <div className="photo-fallback hidden absolute inset-0">
+                <PhotoUnavailable className="w-full h-full" />
+              </div>
             </div>
             {photos[0].caption && (
               <motion.p variants={captionVariants} className="text-center font-serif text-sm md:text-base italic text-[#a89f94] max-w-md px-6 leading-relaxed">

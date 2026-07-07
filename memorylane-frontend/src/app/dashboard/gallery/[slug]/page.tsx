@@ -11,9 +11,65 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import { PhotoUnavailable } from "@/components/ui/PhotoUnavailable"
 
 interface PageProps {
   params: Promise<{ slug: string }>;
+}
+
+function GuestThumbnail({ s3Key }: { s3Key: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    const fetchUrl = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/upload/presigned-url/${s3Key}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (active) setUrl(data.url)
+        }
+      } catch (err) {
+        console.error("Failed to fetch guest thumbnail URL", err)
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+    fetchUrl()
+    return () => {
+      active = false
+    }
+  }, [s3Key])
+
+  if (loading) {
+    return (
+      <div className="w-full h-full bg-zinc-100 flex items-center justify-center">
+        <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
+      </div>
+    )
+  }
+
+  if (!url) {
+    return <PhotoUnavailable className="w-full h-full" />
+  }
+
+  return (
+    <>
+      <img 
+        src={url} 
+        alt="Guest candidate" 
+        className="w-full h-full object-cover" 
+        onError={(e) => {
+          e.currentTarget.style.display = 'none';
+          e.currentTarget.parentElement?.querySelector('.photo-fallback')?.classList.remove('hidden');
+        }}
+      />
+      <div className="photo-fallback hidden absolute inset-0">
+        <PhotoUnavailable className="w-full h-full" />
+      </div>
+    </>
+  )
 }
 
 export default function GalleryManagementPage({ params }: PageProps) {
@@ -351,19 +407,11 @@ export default function GalleryManagementPage({ params }: PageProps) {
             ) : (
               <div className="space-y-4 max-h-[45vh] overflow-y-auto pr-1">
                 {pendingUploads.map((upload) => {
-                  const url = `${API_BASE_URL}/gallery/${slug}/raw-photo` // (will load S3 presigned or simple key)
-                  // Let's resolve simple local crop image or mock placeholder for UI
-                  const placeholder = "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=120&auto=format&fit=crop"
-                  
                   return (
                     <div key={upload.id} className="border border-zinc-150 bg-[#fafafa] rounded-2xl p-3 space-y-3">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-lg bg-zinc-100 overflow-hidden shrink-0 relative">
-                          <img 
-                            src={placeholder} 
-                            alt="Guest candidate" 
-                            className="w-full h-full object-cover" 
-                          />
+                          <GuestThumbnail s3Key={upload.s3_key} />
                         </div>
                         <div className="truncate flex-1">
                           <span className="block text-[10px] font-bold text-zinc-800 truncate uppercase">{upload.uploader_name || "Guest"}</span>

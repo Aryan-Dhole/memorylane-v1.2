@@ -102,7 +102,7 @@ export default function CinematicViewer({
     return sections
   }
 
-  const coverUrl = photos[0]?.url || "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1200&q=80"
+  const coverUrl = photos[0]?.url || ""
 
   return (
     <div className="w-full bg-[#0a0a0f] text-[#faf9f7] font-sans overflow-x-hidden min-h-screen relative selection:bg-[#c9a96e] selection:text-[#0a0a0f]">

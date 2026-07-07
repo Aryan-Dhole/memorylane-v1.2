@@ -82,7 +82,7 @@ def seed_demo():
         "share_token": "demo",
         "pdf_s3_key": "books/demo/photo_book.pdf",
         "share_url": "http://localhost:3000/book/demo",
-        "pdf_download_url": "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1200&q=80",
+        "pdf_download_url": "books/demo/photo_book.pdf",
         "ready_at": datetime.datetime.now().isoformat()
     }
     
@@ -122,7 +122,7 @@ def seed_demo():
     photos = [
         {
             "batch_id": batch_id,
-            "s3_key": "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1200&q=80",
+            "s3_key": "demo/prep_venue.jpg",
             "original_filename": "prep_venue.jpg",
             "quality_score": 0.95,
             "sequence_index": 0,
@@ -133,7 +133,7 @@ def seed_demo():
         },
         {
             "batch_id": batch_id,
-            "s3_key": "https://images.unsplash.com/photo-1606800052052-a08af7148866?auto=format&fit=crop&w=1200&q=80",
+            "s3_key": "demo/prep_couple.jpg",
             "original_filename": "prep_couple.jpg",
             "quality_score": 0.96,
             "sequence_index": 1,
@@ -144,7 +144,7 @@ def seed_demo():
         },
         {
             "batch_id": batch_id,
-            "s3_key": "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=1200&q=80",
+            "s3_key": "demo/ritual_garlands.jpg",
             "original_filename": "ritual_garlands.jpg",
             "quality_score": 0.94,
             "sequence_index": 2,
@@ -155,7 +155,7 @@ def seed_demo():
         },
         {
             "batch_id": batch_id,
-            "s3_key": "https://images.unsplash.com/photo-1583939003579-730e3918a45a?auto=format&fit=crop&w=1200&q=80",
+            "s3_key": "demo/ritual_fire.jpg",
             "original_filename": "ritual_fire.jpg",
             "quality_score": 0.97,
             "sequence_index": 3,
@@ -166,7 +166,7 @@ def seed_demo():
         },
         {
             "batch_id": batch_id,
-            "s3_key": "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=1200&q=80",
+            "s3_key": "demo/reception_dance.jpg",
             "original_filename": "reception_dance.jpg",
             "quality_score": 0.98,
             "sequence_index": 4,

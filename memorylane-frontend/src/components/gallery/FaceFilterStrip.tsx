@@ -2,7 +2,7 @@
 
 import React, { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Download, Users, Lock, X, Sparkles } from "lucide-react"
+import { Download, Users, Lock, X, Sparkles, User } from "lucide-react"
 
 interface FaceCluster {
   cluster_index: number;
@@ -57,8 +57,8 @@ export default function FaceFilterStrip({
           {/* Cluster faces list */}
           {faceClusters.map((cluster) => {
             const isActive = activeCluster === cluster.cluster_index
-            const cropUrl = cluster.face_crop_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop"
-            
+            const cropUrl = cluster.face_crop_url
+
             return (
               <button
                 key={cluster.cluster_index}
@@ -76,13 +76,26 @@ export default function FaceFilterStrip({
                     ? "border-[#c9a96e] ring-2 ring-[#c9a96e] scale-105" 
                     : "border-zinc-800 group-hover:border-zinc-700"
                 }`}>
-                  <img 
-                    src={cropUrl} 
-                    alt={`Face ${cluster.cluster_index}`}
-                    className={`w-full h-full object-cover transition-all ${
-                      isFreeTier ? "grayscale opacity-40 blur-[1px]" : ""
-                    }`}
-                  />
+                  {cropUrl ? (
+                    <img 
+                      src={cropUrl} 
+                      alt={`Face ${cluster.cluster_index}`}
+                      className={`w-full h-full object-cover transition-all ${
+                        isFreeTier ? "grayscale opacity-40 blur-[1px]" : ""
+                      }`}
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.parentElement?.querySelector('.face-fallback')?.classList.remove('hidden');
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-zinc-900 flex items-center justify-center text-zinc-500">
+                      <User className="w-5 h-5" />
+                    </div>
+                  )}
+                  <div className="face-fallback hidden absolute inset-0 bg-zinc-900 flex items-center justify-center text-zinc-550">
+                    <User className="w-5 h-5" />
+                  </div>
                   
                   {/* Lock badge icon overlay for Free tier */}
                   {isFreeTier ? (

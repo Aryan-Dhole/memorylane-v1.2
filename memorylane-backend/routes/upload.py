@@ -139,16 +139,16 @@ def confirm_upload(req: UploadConfirmRequest):
             content={"error": "Failed to confirm batch uploads", "code": "UPLOAD_CONFIRM_ERROR", "status": 400}
         )
 
-# --- MOCK S3 ENDPOINTS FOR OFFLINE LOCAL DEVELOPMENT ---
+# --- LOCAL DEV FILES ENDPOINTS FOR OFFLINE LOCAL DEVELOPMENT ---
 
-@router.put("/mock-s3/{file_path:path}")
-async def mock_s3_upload(file_path: str, request: Request):
+@router.put("/local-dev-files/{file_path:path}")
+async def upload_local_dev_file(file_path: str, request: Request):
     """
-    Local mock endpoint simulating AWS S3 direct upload destination.
-    Writes file body directly to local disk.
+    Local development endpoint simulating AWS S3 direct upload destination.
+    Writes file body directly to local disk. Only available in non-production.
     """
     if os.getenv("ENV") == "production":
-        raise HTTPException(status_code=404, detail="Mock S3 not available in production")
+        raise HTTPException(status_code=404, detail="Not available in production")
         
     target_path = os.path.join(LOCAL_S3_DIR, file_path)
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
@@ -156,45 +156,27 @@ async def mock_s3_upload(file_path: str, request: Request):
     try:
         with open(target_path, "wb") as f:
             f.write(body)
-        logger.info("Saved local mock S3 file: %s", target_path)
-        return {"message": "Upload successful (local mock S3)"}
+        logger.info("Saved local dev file: %s", target_path)
+        return {"message": "Upload successful (local dev)"}
     except Exception as e:
-        logger.error("Failed to save local mock S3 file: %s", e)
+        logger.error("Failed to save local dev file: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/mock-s3/{file_path:path}")
-async def serve_mock_s3(file_path: str):
+@router.get("/local-dev-files/{file_path:path}")
+async def serve_local_dev_file(file_path: str):
     """
-    Local mock endpoint simulating AWS S3 download link.
-    Serves the file from local disk, or redirects to a high-quality placeholder if missing.
+    Local development endpoint simulating AWS S3 download link.
+    Serves the file from local disk. Only available in non-production.
     """
     if os.getenv("ENV") == "production":
-        raise HTTPException(status_code=404, detail="Mock S3 not available in production")
+        raise HTTPException(status_code=404, detail="Not available in production")
         
     local_path = os.path.join(LOCAL_S3_DIR, file_path)
     if not os.path.exists(local_path):
-        import re
-        filename = os.path.basename(file_path)
-        match = re.search(r'\d+', filename)
-        idx = int(match.group()) if match else 0
-        
-        unsplash_urls = [
-            "https://images.unsplash.com/photo-1519741497674-611481863552?w=800&auto=format&fit=crop",
-            "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?w=800&auto=format&fit=crop",
-            "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&auto=format&fit=crop",
-            "https://images.unsplash.com/photo-1507504038482-762103743ec1?w=800&auto=format&fit=crop",
-            "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?w=800&auto=format&fit=crop",
-            "https://images.unsplash.com/photo-1519225495810-7512c696505a?w=800&auto=format&fit=crop",
-            "https://images.unsplash.com/photo-1520854221256-174b1ec358ef?w=800&auto=format&fit=crop",
-            "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=800&auto=format&fit=crop",
-            "https://images.unsplash.com/photo-1583939003579-730e3918a45a?w=800&auto=format&fit=crop",
-            "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&auto=format&fit=crop",
-        ]
-        placeholder_url = unsplash_urls[idx % len(unsplash_urls)]
-        logger.info("Local mock file %s not found. Redirecting to Unsplash placeholder: %s", filename, placeholder_url)
-        return RedirectResponse(url=placeholder_url)
+        raise HTTPException(status_code=404, detail="File not found")
         
     return FileResponse(local_path)
+
 
 @router.get("/presigned-url/{s3_key:path}")
 def get_presigned_url(s3_key: str):

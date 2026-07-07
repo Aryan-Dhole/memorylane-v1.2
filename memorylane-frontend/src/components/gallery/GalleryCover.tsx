@@ -21,23 +21,19 @@ export default function GalleryCover({
   coverPhotoUrl,
   totalReactions
 }: GalleryCoverProps) {
-  const FALLBACKS: Record<string, string> = {
-    wedding: "https://images.unsplash.com/photo-1519225495810-7512c696505a?auto=format&fit=crop&w=1600&q=80",
-    baby: "https://images.unsplash.com/photo-1505678261036-a3fcc5e884ee?auto=format&fit=crop&w=1600&q=80",
-    travel: "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1600&q=80",
-    festival: "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=1600&q=80",
-    classic: "https://images.unsplash.com/photo-1454789548928-9efd52dc4031?auto=format&fit=crop&w=1600&q=80"
-  }
-  const typeKey = (eventType || "wedding").toLowerCase()
-  const fallbackCover = coverPhotoUrl || FALLBACKS[typeKey] || FALLBACKS.classic
+  const hasCover = !!coverPhotoUrl
 
   return (
     <div className="relative w-full h-screen overflow-hidden select-none bg-zinc-950 flex flex-col justify-between items-center text-center px-6 py-12">
       {/* Background Image Parallax layer */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center opacity-65 scale-[1.02] transition-transform duration-1000"
-        style={{ backgroundImage: `url(${fallbackCover})` }}
-      />
+      {hasCover ? (
+        <div 
+          className="absolute inset-0 bg-cover bg-center opacity-65 scale-[1.02] transition-transform duration-1000"
+          style={{ backgroundImage: `url(${coverPhotoUrl})` }}
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 to-zinc-950 opacity-60" />
+      )}
       
       {/* Luxury Vignette and Gradients */}
       <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/70 via-transparent to-zinc-950 pointer-events-none" />

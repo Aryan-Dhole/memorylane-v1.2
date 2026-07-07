@@ -15,10 +15,14 @@ export default function BookCover({ title, eventType, coverUrl, date }: BookCove
   return (
     <div className="relative w-full h-screen overflow-hidden flex items-center justify-center bg-[#0a0a0f]">
       {/* Full-bleed cover photo */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-60" 
-        style={{ backgroundImage: `url(${coverUrl})` }}
-      />
+      {coverUrl ? (
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-60" 
+          style={{ backgroundImage: `url(${coverUrl})` }}
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 to-zinc-950 opacity-60" />
+      )}
       {/* Dark gradient overlay */}
       <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/50 to-transparent" />
 
