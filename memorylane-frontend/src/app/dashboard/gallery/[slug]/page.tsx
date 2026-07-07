@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import PhotoUnavailable from "@/components/ui/PhotoUnavailable"
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -84,7 +85,19 @@ export default function GalleryManagementPage({ params }: PageProps) {
         .eq("status", "pending")
         
       if (!uploadErr && uploads) {
-        setPendingUploads(uploads)
+        const uploadsWithUrls = await Promise.all(uploads.map(async (u: any) => {
+          try {
+            const presignedRes = await fetch(`${API_BASE_URL}/upload/presigned-url/${u.s3_key}`)
+            if (presignedRes.ok) {
+              const presignedData = await presignedRes.json()
+              return { ...u, url: presignedData.url }
+            }
+          } catch (err) {
+            console.error("Failed to fetch presigned URL for upload:", err)
+          }
+          return { ...u, url: null }
+        }))
+        setPendingUploads(uploadsWithUrls)
       }
     } catch (err: any) {
       console.error(err)
@@ -351,19 +364,28 @@ export default function GalleryManagementPage({ params }: PageProps) {
             ) : (
               <div className="space-y-4 max-h-[45vh] overflow-y-auto pr-1">
                 {pendingUploads.map((upload) => {
-                  const url = `${API_BASE_URL}/gallery/${slug}/raw-photo` // (will load S3 presigned or simple key)
-                  // Let's resolve simple local crop image or mock placeholder for UI
-                  const placeholder = "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=120&auto=format&fit=crop"
-                  
                   return (
                     <div key={upload.id} className="border border-zinc-150 bg-[#fafafa] rounded-2xl p-3 space-y-3">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-lg bg-zinc-100 overflow-hidden shrink-0 relative">
-                          <img 
-                            src={placeholder} 
-                            alt="Guest candidate" 
-                            className="w-full h-full object-cover" 
-                          />
+                          {upload.url ? (
+                            <>
+                              <img 
+                                src={upload.url} 
+                                alt="Guest candidate" 
+                                className="w-full h-full object-cover" 
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none'
+                                  e.currentTarget.parentElement?.querySelector('.photo-fallback')?.classList.remove('hidden')
+                                }}
+                              />
+                              <div className="photo-fallback hidden absolute inset-0 w-full h-full">
+                                <PhotoUnavailable className="w-full h-full scale-[0.6] flex flex-col items-center justify-center" />
+                              </div>
+                            </>
+                          ) : (
+                            <PhotoUnavailable className="w-full h-full absolute inset-0 scale-[0.6] flex flex-col items-center justify-center" />
+                          )}
                         </div>
                         <div className="truncate flex-1">
                           <span className="block text-[10px] font-bold text-zinc-800 truncate uppercase">{upload.uploader_name || "Guest"}</span>

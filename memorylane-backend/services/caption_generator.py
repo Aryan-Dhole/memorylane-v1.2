@@ -184,7 +184,7 @@ async def analyze_photo_visually(image_path: str) -> dict:
                 with Image.open(local_path) as pil_img:
                     response = await asyncio.to_thread(
                         client.models.generate_content,
-                        model='gemini-1.5-flash',
+                        model='gemini-2.0-flash',
                         contents=[pil_img, VISUAL_ANALYSIS_PROMPT]
                     )
                     text = response.text.strip()
@@ -385,7 +385,7 @@ async def generate_single_caption(
                 client = genai.Client(api_key=gemini_key)
                 response = await asyncio.to_thread(
                     client.models.generate_content,
-                    model='gemini-1.5-flash',
+                    model='gemini-2.0-flash',
                     contents=[formatted_prompt],
                     config=types.GenerateContentConfig(
                         temperature=0.85,

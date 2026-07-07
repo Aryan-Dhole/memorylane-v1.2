@@ -126,7 +126,7 @@ def get_analysis_result(batch_id: str):
                 selected_photos = []
                 for p in photos_res.data:
                     # Resolve key path to a presigned S3 download URL (or local path)
-                    download_url = s3_service.generate_download_url(p["s3_key"])
+                    download_url = s3_service.get_photo_url(p["s3_key"])
                     vis_analysis = p.get("visual_analysis") or {}
                     dom_emotion = vis_analysis.get("dominant_emotion") or "candid_unaware"
                     selected_photos.append(SelectedPhotoMetadata(

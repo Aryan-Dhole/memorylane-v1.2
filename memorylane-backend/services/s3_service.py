@@ -108,7 +108,7 @@ def generate_upload_url(user_id: str, batch_id: str, filename: str) -> dict:
     # Mock / Local fallback url
     # Point the upload URL to our local FastAPI server upload endpoint
     api_url = _get_api_url()
-    local_url = f"{api_url}/upload/mock-s3/{s3_key}"
+    local_url = f"{api_url}/upload/local-dev-files/{s3_key}"
     return {"url": local_url, "key": s3_key, "expires_in": 3600}
     
 def generate_download_url(s3_key: str, expires_in: int = 300) -> str:
@@ -145,8 +145,53 @@ def generate_download_url(s3_key: str, expires_in: int = 300) -> str:
 
     # Mock / Local fallback url
     api_url = _get_api_url()
-    local_url = f"{api_url}/upload/mock-s3/{s3_key}"
+    local_url = f"{api_url}/upload/local-dev-files/{s3_key}"
     return local_url
+
+def get_photo_url(s3_key: str, expires_in: int = 3600) -> str | None:
+    """
+    Generate a fresh pre-signed URL for a REAL customer photo.
+    Returns None if the object doesn't exist — caller shows an empty
+    state for that slot. NEVER substitute a different image here.
+    """
+    if not s3_key:
+        return None
+        
+    if s3_key.startswith("http://") or s3_key.startswith("https://"):
+        return s3_key
+        
+    bucket_name = os.getenv("S3_BUCKET_NAME", "memorylane-photos")
+    s3_client = get_s3_client()
+    
+    if s3_client:
+        try:
+            # Check if object exists in S3
+            s3_client.head_object(Bucket=bucket_name, Key=s3_key)
+            # Generate pre-signed URL
+            return s3_client.generate_presigned_url(
+                "get_object",
+                Params={
+                    "Bucket": bucket_name,
+                    "Key": s3_key
+                },
+                ExpiresIn=expires_in
+            )
+        except ClientError as e:
+            logger.error("ClientError heading/pre-signing download URL for %s: %s", s3_key, e)
+            return None
+        except Exception as e:
+            logger.error("Unexpected error pre-signing download URL for %s: %s", s3_key, e)
+            return None
+            
+    # Local development / mock S3 mode
+    # Resolve from local_s3_bucket
+    local_resolved = os.path.join(LOCAL_S3_DIR, s3_key)
+    if os.path.exists(local_resolved):
+        api_url = _get_api_url()
+        return f"{api_url}/upload/local-dev-files/{s3_key}"
+        
+    logger.error("Customer photo not found in S3 or local bucket: %s", s3_key)
+    return None
 
 def delete_batch(batch_prefix: str) -> bool:
     """

@@ -11,11 +11,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { motion, AnimatePresence } from "framer-motion"
+import PhotoUnavailable from "@/components/ui/PhotoUnavailable"
 
 interface Photo {
   id: string
-  url: string
-  thumb_url: string
+  url: string | null
+  thumb_url: string | null
   caption: string
   is_selected: boolean
   moment_id: string
@@ -289,11 +290,24 @@ export default function GalleryReviewPage({ params }: PageProps) {
                     >
                       {/* Image Frame */}
                       <div className="w-full md:w-48 aspect-[4/3] md:aspect-square bg-zinc-50 border border-zinc-150 rounded-2xl overflow-hidden relative shrink-0">
-                        <img 
-                          src={photo.url} 
-                          alt="Curation candidate" 
-                          className="w-full h-full object-cover" 
-                        />
+                        {photo.url ? (
+                          <>
+                            <img 
+                              src={photo.url} 
+                              alt="Curation candidate" 
+                              className="w-full h-full object-cover" 
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none'
+                                e.currentTarget.parentElement?.querySelector('.photo-fallback')?.classList.remove('hidden')
+                              }}
+                            />
+                            <div className="photo-fallback hidden absolute inset-0 w-full h-full">
+                              <PhotoUnavailable className="w-full h-full" />
+                            </div>
+                          </>
+                        ) : (
+                          <PhotoUnavailable className="w-full h-full absolute inset-0" />
+                        )}
                         <button
                           onClick={() => handleToggleSelect(photo.id)}
                           className="absolute top-3 right-3 bg-zinc-950/80 hover:bg-rose-600/90 text-white w-7 h-7 rounded-full flex items-center justify-center transition-colors shadow-md border border-white/20"
@@ -385,11 +399,24 @@ export default function GalleryReviewPage({ params }: PageProps) {
                     className="aspect-square bg-zinc-50 border border-zinc-200 rounded-2xl overflow-hidden relative cursor-pointer group shadow-sm hover:border-zinc-400 transition-all"
                     title="Include in gallery"
                   >
-                    <img 
-                      src={photo.url} 
-                      alt="Excluded candidate" 
-                      className="w-full h-full object-cover opacity-60 group-hover:opacity-90 transition-opacity" 
-                    />
+                    {photo.url ? (
+                      <>
+                        <img 
+                          src={photo.url} 
+                          alt="Excluded candidate" 
+                          className="w-full h-full object-cover opacity-60 group-hover:opacity-90 transition-opacity" 
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none'
+                            e.currentTarget.parentElement?.querySelector('.photo-fallback')?.classList.remove('hidden')
+                          }}
+                        />
+                        <div className="photo-fallback hidden absolute inset-0 w-full h-full">
+                          <PhotoUnavailable className="w-full h-full scale-[0.8] flex flex-col items-center justify-center" />
+                        </div>
+                      </>
+                    ) : (
+                      <PhotoUnavailable className="w-full h-full absolute inset-0 scale-[0.8] flex flex-col items-center justify-center" />
+                    )}
                     <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors flex items-center justify-center">
                       <div className="bg-white/95 rounded-full p-2 shadow-md opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 transition-all text-zinc-800">
                         <Plus className="w-4 h-4" />

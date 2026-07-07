@@ -3,10 +3,11 @@
 import React, { useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { X, ChevronLeft, ChevronRight, Download, Heart } from "lucide-react"
+import PhotoUnavailable from "@/components/ui/PhotoUnavailable"
 
 interface Photo {
   id: string;
-  url: string;
+  url: string | null;
   caption: string;
   dominant_emotion: string;
   reaction_counts: { heart: number; laugh: number; cry: number; wow: number };
@@ -100,17 +101,30 @@ export default function PhotoLightbox({
             </button>
 
             {/* Main Image */}
-            <div className="w-full max-w-4xl mx-auto h-[65vh] md:h-[75vh] flex items-center justify-center relative">
-              <motion.img
-                key={photo.id}
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }}
-                transition={{ duration: 0.3 }}
-                src={photo.url}
-                alt="Lightbox expanded event detail"
-                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-              />
+            <div className="w-full max-w-4xl mx-auto h-[65vh] md:h-[75vh] flex items-center justify-center relative bg-zinc-950 rounded-lg">
+              {photo.url ? (
+                <>
+                  <motion.img
+                    key={photo.id}
+                    initial={{ opacity: 0, scale: 0.96 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.96 }}
+                    transition={{ duration: 0.3 }}
+                    src={photo.url}
+                    alt="Lightbox expanded event detail"
+                    className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none'
+                      e.currentTarget.parentElement?.querySelector('.photo-fallback')?.classList.remove('hidden')
+                    }}
+                  />
+                  <div className="photo-fallback hidden absolute inset-0 w-full h-[65vh] md:h-[75vh]">
+                    <PhotoUnavailable className="w-full h-full rounded-lg" />
+                  </div>
+                </>
+              ) : (
+                <PhotoUnavailable className="w-full h-full rounded-lg" />
+              )}
             </div>
 
             {/* Next arrow */}

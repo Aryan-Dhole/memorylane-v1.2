@@ -171,7 +171,7 @@ async def detect_moments(
                 import asyncio
                 response = await asyncio.to_thread(
                     client.models.generate_content,
-                    model='gemini-2.5-flash',
+                    model='gemini-2.0-flash',
                     contents=[prompt]
                 )
                 text = response.text.strip()

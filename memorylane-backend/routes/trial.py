@@ -198,7 +198,7 @@ def get_trial_result(trial_id: str):
             path_val = p.get("path") or ""
             # Generate pre-signed URL if path is an S3 key
             if path_val.startswith("uploads/") or path_val.startswith("faces/"):
-                download_url = s3_service.generate_download_url(path_val)
+                download_url = s3_service.get_photo_url(path_val)
             else:
                 download_url = path_val
             

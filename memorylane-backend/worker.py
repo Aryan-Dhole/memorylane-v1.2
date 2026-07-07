@@ -18,6 +18,24 @@ from services.notifications import send_order_confirmation_email, send_gallery_r
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
+async def verify_selected_photos_exist(batch_id: str):
+    """Run at the end of pipeline processing for a REAL customer batch."""
+    try:
+        photos_res = supabase.table("photos").select("s3_key").eq("batch_id", batch_id).eq("is_selected", True).execute()
+        photos = photos_res.data or []
+        missing = []
+        for photo in photos:
+            s3_key = photo["s3_key"]
+            if s3_service.get_photo_url(s3_key) is None:
+                missing.append(s3_key)
+        if missing:
+            logger.error("CRITICAL: %d selected photos missing from S3 for batch %s: %s", len(missing), batch_id, missing)
+            supabase.table("photos").update({"is_selected": False, "status": "s3_missing"}).in_("s3_key", missing).execute()
+        return missing
+    except Exception as e:
+        logger.error("Failed to verify S3 photos existence for batch %s: %s", batch_id, e)
+        return []
+
 TIER_TARGETS = {
     "free": 20,
     "basic": 80,
@@ -83,7 +101,18 @@ async def process_job(job):
         local_image_paths = []
         for s3_key in image_paths:
             local_path = s3_service.download_to_temp(s3_key)
-            local_image_paths.append(local_path if local_path else s3_key)
+            if local_path:
+                local_image_paths.append(local_path)
+            else:
+                if os.getenv("ENV") == "production":
+                    logger.error("Failed to download trial photo from S3: %s. Excluding from processing.", s3_key)
+                    try:
+                        supabase.table("photos").update({"is_selected": False, "status": "s3_missing"}).eq("s3_key", s3_key).eq("batch_id", batch_id).execute()
+                    except Exception as db_err:
+                        logger.error("Failed to update status for missing photo %s: %s", s3_key, db_err)
+                    continue
+                else:
+                    local_image_paths.append(s3_key)
 
         # 3. Run AI Pipeline
         try:
@@ -197,9 +226,16 @@ async def process_job(job):
             local_image_paths.append(local_path)
             s3_key_to_local[s3_key] = local_path
         else:
-            # Fallback: pass s3_key as-is (will hit mock fallback in dev)
-            local_image_paths.append(s3_key)
-            s3_key_to_local[s3_key] = s3_key
+            if os.getenv("ENV") == "production":
+                logger.error("Failed to download real customer photo from S3: %s. Excluding from processing.", s3_key)
+                try:
+                    supabase.table("photos").update({"is_selected": False, "status": "s3_missing"}).eq("s3_key", s3_key).eq("batch_id", batch_id).execute()
+                except Exception as db_err:
+                    logger.error("Failed to update status for missing photo %s: %s", s3_key, db_err)
+                continue
+            else:
+                local_image_paths.append(s3_key)
+                s3_key_to_local[s3_key] = s3_key
     logger.info("Downloaded %d/%d photos to local temp for pipeline", len([p for p in local_image_paths if os.path.exists(p)]), len(image_paths))
 
     # 4. Run AI Pipeline
@@ -286,6 +322,10 @@ async def process_job(job):
             }).execute()
         except Exception as e:
             logger.error("Failed to insert face cluster index %s: %s", cluster["cluster_index"], e)
+
+    # 8b. Verify selected photos exist in S3 (production only)
+    if os.getenv("ENV") == "production":
+        await verify_selected_photos_exist(batch_id)
 
     # 9. Format gallery live URL
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")

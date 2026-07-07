@@ -63,193 +63,309 @@ def get_gallery_details(request: Request, slug: str, background_tasks: Backgroun
     Public gallery retrieval endpoint. No auth required.
     Cached in Redis for 5 minutes.
     """
-    cache_key = f"gallery:{slug}"
+    # 1. Skip S3 verification entirely for the intentional demo gallery - leave that as-is
+    if slug == "demo":
+        event_res = supabase.table("orders").select("*").eq("event_slug", slug).execute()
+        if not event_res.data:
+            event_res = supabase.table("orders").select("*").eq("share_token", "demo").execute()
+            
+        if event_res.data:
+            event = event_res.data[0]
+            order_id = event["id"]
+            batch_res = supabase.table("photo_batches").select("id").eq("order_id", order_id).execute()
+            if batch_res.data:
+                batch_id = batch_res.data[0]["id"]
+                moments_res = supabase.table("gallery_moments").select("*").eq("order_id", order_id).order("display_order").execute()
+                moments_list = moments_res.data or []
+                if not moments_list:
+                    moments_list = [{"id": None, "name": "Highlights", "display_order": 0}]
+                    
+                photos_res = supabase.table("photos").select("*").eq("batch_id", batch_id).eq("is_selected", True).order("sequence_index").execute()
+                photos_data = photos_res.data or []
+                photo_ids = [p["id"] for p in photos_data]
+                
+                reactions_dict = {}
+                if photo_ids:
+                    try:
+                        react_res = supabase.table("photo_reactions").select("photo_id, reaction_type").in_("photo_id", photo_ids).execute()
+                        for r in (react_res.data or []):
+                            p_id = r["photo_id"]
+                            r_type = r["reaction_type"]
+                            if p_id not in reactions_dict:
+                                reactions_dict[p_id] = {"heart": 0, "laugh": 0, "cry": 0, "wow": 0}
+                            if r_type in reactions_dict[p_id]:
+                                reactions_dict[p_id][r_type] += 1
+                    except Exception as e:
+                        logger.error("Failed to query reactions: %s", e)
+                        
+                moments_payload = []
+                for idx, moment in enumerate(moments_list):
+                    m_id = moment.get("id")
+                    m_photos = []
+                    for p in photos_data:
+                        is_match = False
+                        if m_id and p.get("moment_id") == m_id:
+                            is_match = True
+                        elif not p.get("moment_id") and idx == p.get("chapter_index", 0):
+                            is_match = True
+                            
+                        if is_match:
+                            p_id = p["id"]
+                            caption = p.get("caption_edited") or p.get("caption_v2") or p.get("caption") or ""
+                            m_photos.append({
+                                "id": p_id,
+                                "url": s3_service.generate_download_url(p["s3_key"]),
+                                "thumb_url": s3_service.generate_download_url(p["s3_key"], expires_in=3600),
+                                "caption": caption,
+                                "face_cluster_ids": p.get("face_cluster_ids") or [],
+                                "dominant_emotion": p.get("visual_analysis", {}).get("dominant_emotion") if p.get("visual_analysis") else "candid_unaware",
+                                "reaction_counts": reactions_dict.get(p_id, {"heart": 0, "laugh": 0, "cry": 0, "wow": 0})
+                            })
+                            
+                    m_cover = ""
+                    if moment.get("cover_photo_id"):
+                        cov_photo = next((p for p in photos_data if p["id"] == moment["cover_photo_id"]), None)
+                        if cov_photo:
+                            m_cover = s3_service.generate_download_url(cov_photo["s3_key"])
+                    elif m_photos:
+                        m_cover = m_photos[0]["url"]
+                        
+                    moments_payload.append({
+                        "id": m_id or str(idx),
+                        "name": moment["name"],
+                        "display_order": moment["display_order"],
+                        "cover_photo_url": m_cover,
+                        "photos": m_photos
+                    })
+                    
+                clusters_res = supabase.table("face_clusters").select("*").eq("order_id", order_id).execute()
+                clusters_payload = []
+                for c in (clusters_res.data or []):
+                    crop_url = ""
+                    if c.get("representative_face_crop_s3"):
+                        crop_url = s3_service.generate_download_url(c["representative_face_crop_s3"])
+                    clusters_payload.append({
+                        "cluster_index": c["cluster_index"],
+                        "face_crop_url": crop_url,
+                        "photo_count": c.get("photo_count", 0)
+                    })
+                    
+                cover_url = ""
+                if event.get("cover_photo_id") and photos_data:
+                    cov_photo = next((p for p in photos_data if p["id"] == event["cover_photo_id"]), None)
+                    if cov_photo:
+                        cover_url = s3_service.generate_download_url(cov_photo["s3_key"])
+                elif moments_payload and moments_payload[0]["photos"]:
+                    cover_url = moments_payload[0]["photos"][0]["url"]
+                    
+                return {
+                    "id": order_id,
+                    "event_name": event.get("event_name") or "My Event",
+                    "event_type": event.get("book_type") or "Wedding",
+                    "event_date": str(event.get("event_date")) if event.get("event_date") else "",
+                    "event_location": event.get("event_location") or "",
+                    "cover_photo_url": cover_url,
+                    "caption_style": event.get("caption_style", "cinematic"),
+                    "tier": event.get("tier") or "free",
+                    "moments": moments_payload,
+                    "face_clusters": clusters_payload,
+                    "allow_guest_uploads": event.get("allow_guest_uploads", False),
+                    "allow_reactions": event.get("allow_reactions", True),
+                    "total_photos": len(photos_data),
+                    "view_count": event.get("view_count", 0)
+                }
+
+    # 2. Redis Caching logic for REAL user galleries
+    cache_key = f"gallery-meta:{slug}"
     rc = get_redis_client()
+    response_payload = None
     if rc:
         try:
             cached = rc.get(cache_key)
             if cached:
-                logger.info("Serving gallery payload from Redis cache: %s", slug)
-                data = json.loads(cached)
-                # Increment views async
-                background_tasks.add_task(increment_views_task, slug, data.get("view_count", 0))
-                return data
+                logger.info("Serving gallery metadata from Redis cache: %s", slug)
+                response_payload = json.loads(cached)
         except Exception as e:
             logger.error("Redis cache read error: %s", e)
 
-    # Fetch event/order record
-    event_res = supabase.table("orders").select("*").eq("event_slug", slug).execute()
-    if not event_res.data:
-        raise HTTPException(status_code=404, detail="Event gallery not found")
-    
-    event = event_res.data[0]
-    
-    # Check if gallery is published (publicly accessible)
-    if not event.get("gallery_live"):
-        if event.get("status") == "review_ready":
-            raise HTTPException(
-                status_code=403,
-                detail="This gallery is not yet published. The creator is reviewing it."
-            )
-        raise HTTPException(status_code=404, detail="Event gallery not found")
-    
-    # Check if gallery has expired
-    expires_at_str = event.get("expires_at")
-    if expires_at_str:
-        try:
-            expires_at = datetime.datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
-            if datetime.datetime.now(datetime.timezone.utc) > expires_at:
-                raise HTTPException(
-                    status_code=410, 
-                    detail="This gallery link has expired (7-day limit for Free, 365-day limit for Basic)."
-                )
-        except ValueError:
-            pass
-    order_id = event["id"]
-    
-    # Get associated batch
-    batch_res = supabase.table("photo_batches").select("id").eq("order_id", order_id).execute()
-    if not batch_res.data:
-        raise HTTPException(status_code=404, detail="Photo batch not configured for this event")
+    if not response_payload:
+        event_res = supabase.table("orders").select("*").eq("event_slug", slug).execute()
+        if not event_res.data:
+            raise HTTPException(status_code=404, detail="Event gallery not found")
         
-    batch_id = batch_res.data[0]["id"]
-    
-    # Fetch moments
-    moments_res = supabase.table("gallery_moments").select("*").eq("order_id", order_id).order("display_order").execute()
-    moments_list = moments_res.data or []
-    
-    # If no moments created yet, create a default one
-    if not moments_list:
-        try:
-            insert_res = supabase.table("gallery_moments").insert({
-                "order_id": order_id,
-                "name": "Highlights",
-                "display_order": 0
-            }).execute()
-            if insert_res.data:
-                moments_list = insert_res.data
-        except Exception:
-            moments_list = [{"id": None, "name": "Highlights", "display_order": 0}]
+        event = event_res.data[0]
+        
+        if not event.get("gallery_live"):
+            if event.get("status") == "review_ready":
+                raise HTTPException(
+                    status_code=403,
+                    detail="This gallery is not yet published. The creator is reviewing it."
+                )
+            raise HTTPException(status_code=404, detail="Event gallery not found")
+        
+        expires_at_str = event.get("expires_at")
+        if expires_at_str:
+            try:
+                expires_at = datetime.datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+                if datetime.datetime.now(datetime.timezone.utc) > expires_at:
+                    raise HTTPException(
+                        status_code=410, 
+                        detail="This gallery link has expired (7-day limit for Free, 365-day limit for Basic)."
+                    )
+            except ValueError:
+                pass
+        order_id = event["id"]
+        
+        batch_res = supabase.table("photo_batches").select("id").eq("order_id", order_id).execute()
+        if not batch_res.data:
+            raise HTTPException(status_code=404, detail="Photo batch not configured for this event")
+            
+        batch_id = batch_res.data[0]["id"]
+        
+        moments_res = supabase.table("gallery_moments").select("*").eq("order_id", order_id).order("display_order").execute()
+        moments_list = moments_res.data or []
+        
+        if not moments_list:
+            try:
+                insert_res = supabase.table("gallery_moments").insert({
+                    "order_id": order_id,
+                    "name": "Highlights",
+                    "display_order": 0
+                }).execute()
+                if insert_res.data:
+                    moments_list = insert_res.data
+            except Exception:
+                moments_list = [{"id": None, "name": "Highlights", "display_order": 0}]
 
-    # Fetch selected photos
-    photos_res = supabase.table("photos") \
-        .select("*") \
-        .eq("batch_id", batch_id) \
-        .eq("is_selected", True) \
-        .order("sequence_index") \
-        .execute()
-    
-    photos_data = photos_res.data or []
-    photo_ids = [p["id"] for p in photos_data]
-    
-    # Fetch reactions counts
-    reactions_dict = {}
-    if photo_ids:
-        try:
-            react_res = supabase.table("photo_reactions").select("photo_id, reaction_type").in_("photo_id", photo_ids).execute()
-            for r in (react_res.data or []):
-                p_id = r["photo_id"]
-                r_type = r["reaction_type"]
-                if p_id not in reactions_dict:
-                    reactions_dict[p_id] = {"heart": 0, "laugh": 0, "cry": 0, "wow": 0}
-                if r_type in reactions_dict[p_id]:
-                    reactions_dict[p_id][r_type] += 1
-        except Exception as e:
-            logger.error("Failed to query reactions: %s", e)
+        photos_res = supabase.table("photos") \
+            .select("*") \
+            .eq("batch_id", batch_id) \
+            .eq("is_selected", True) \
+            .order("sequence_index") \
+            .execute()
+        
+        photos_data = photos_res.data or []
+        photo_ids = [p["id"] for p in photos_data]
+        
+        reactions_dict = {}
+        if photo_ids:
+            try:
+                react_res = supabase.table("photo_reactions").select("photo_id, reaction_type").in_("photo_id", photo_ids).execute()
+                for r in (react_res.data or []):
+                    p_id = r["photo_id"]
+                    r_type = r["reaction_type"]
+                    if p_id not in reactions_dict:
+                        reactions_dict[p_id] = {"heart": 0, "laugh": 0, "cry": 0, "wow": 0}
+                    if r_type in reactions_dict[p_id]:
+                        reactions_dict[p_id][r_type] += 1
+            except Exception as e:
+                logger.error("Failed to query reactions: %s", e)
 
-    # Format moments payload
-    moments_payload = []
-    for idx, moment in enumerate(moments_list):
-        m_id = moment.get("id")
-        # Filter photos belonging to this moment or index
-        m_photos = []
-        for p in photos_data:
-            # Check if moment_id matches
-            is_match = False
-            if m_id and p.get("moment_id") == m_id:
-                is_match = True
-            elif not p.get("moment_id") and idx == p.get("chapter_index", 0):
-                is_match = True
-                
-            if is_match:
-                p_id = p["id"]
-                caption = p.get("caption_edited") or p.get("caption_v2") or p.get("caption") or ""
-                m_photos.append({
-                    "id": p_id,
-                    "url": s3_service.generate_download_url(p["s3_key"]),
-                    "thumb_url": s3_service.generate_download_url(p["s3_key"], expires_in=3600),
-                    "caption": caption,
-                    "face_cluster_ids": p.get("face_cluster_ids") or [],
-                    "dominant_emotion": p.get("visual_analysis", {}).get("dominant_emotion") if p.get("visual_analysis") else "candid_unaware",
-                    "reaction_counts": reactions_dict.get(p_id, {"heart": 0, "laugh": 0, "cry": 0, "wow": 0})
-                })
-                
-        # Resolve moment cover image
+        moments_payload = []
+        for idx, moment in enumerate(moments_list):
+            m_id = moment.get("id")
+            m_photos = []
+            for p in photos_data:
+                is_match = False
+                if m_id and p.get("moment_id") == m_id:
+                    is_match = True
+                elif not p.get("moment_id") and idx == p.get("chapter_index", 0):
+                    is_match = True
+                    
+                if is_match:
+                    p_id = p["id"]
+                    caption = p.get("caption_edited") or p.get("caption_v2") or p.get("caption") or ""
+                    m_photos.append({
+                        "id": p_id,
+                        "s3_key": p["s3_key"],
+                        "caption": caption,
+                        "face_cluster_ids": p.get("face_cluster_ids") or [],
+                        "dominant_emotion": p.get("visual_analysis", {}).get("dominant_emotion") if p.get("visual_analysis") else "candid_unaware",
+                        "reaction_counts": reactions_dict.get(p_id, {"heart": 0, "laugh": 0, "cry": 0, "wow": 0})
+                    })
+                    
+            moments_payload.append({
+                "id": m_id or str(idx),
+                "name": moment["name"],
+                "display_order": moment["display_order"],
+                "cover_photo_id": moment.get("cover_photo_id"),
+                "photos": m_photos
+            })
+
+        clusters_res = supabase.table("face_clusters").select("*").eq("order_id", order_id).execute()
+        clusters_payload = []
+        for c in (clusters_res.data or []):
+            clusters_payload.append({
+                "cluster_index": c["cluster_index"],
+                "representative_face_crop_s3": c.get("representative_face_crop_s3") or "",
+                "photo_count": c.get("photo_count", 0)
+            })
+
+        response_payload = {
+            "id": order_id,
+            "event_name": event.get("event_name") or "My Event",
+            "event_type": event.get("book_type") or "Wedding",
+            "event_date": str(event.get("event_date")) if event.get("event_date") else "",
+            "event_location": event.get("event_location") or "",
+            "caption_style": event.get("caption_style", "cinematic"),
+            "tier": event.get("tier") or "free",
+            "moments": moments_payload,
+            "face_clusters": clusters_payload,
+            "allow_guest_uploads": event.get("allow_guest_uploads", False),
+            "allow_reactions": event.get("allow_reactions", True),
+            "total_photos": len(photos_data),
+            "view_count": event.get("view_count", 0),
+            "cover_photo_id": event.get("cover_photo_id")
+        }
+
+        if rc:
+            try:
+                rc.setex(cache_key, 300, json.dumps(response_payload))
+            except Exception as e:
+                logger.error("Redis write error: %s", e)
+
+    # 3. Dynamic signed URL generation on every request
+    for moment in response_payload["moments"]:
+        for photo in moment["photos"]:
+            s3_key = photo["s3_key"]
+            url = s3_service.get_photo_url(s3_key)
+            photo["url"] = url
+            photo["thumb_url"] = s3_service.get_photo_url(s3_key, expires_in=3600)
+            photo["available"] = url is not None
+
         m_cover = ""
-        if moment.get("cover_photo_id"):
-            cov_photo = next((p for p in photos_data if p["id"] == moment["cover_photo_id"]), None)
+        if moment.get("cover_photo_id") and response_payload["moments"]:
+            cov_photo = None
+            for m in response_payload["moments"]:
+                for p in m["photos"]:
+                    if p["id"] == moment["cover_photo_id"]:
+                        cov_photo = p
+                        break
             if cov_photo:
-                m_cover = s3_service.generate_download_url(cov_photo["s3_key"])
-        elif m_photos:
-            m_cover = m_photos[0]["url"]
-            
-        moments_payload.append({
-            "id": m_id or str(idx),
-            "name": moment["name"],
-            "display_order": moment["display_order"],
-            "cover_photo_url": m_cover,
-            "photos": m_photos
-        })
+                m_cover = cov_photo["url"]
+        elif moment["photos"]:
+            m_cover = moment["photos"][0]["url"]
+        moment["cover_photo_url"] = m_cover
 
-    # Fetch face clusters
-    clusters_res = supabase.table("face_clusters").select("*").eq("order_id", order_id).execute()
-    clusters_payload = []
-    for c in (clusters_res.data or []):
-        crop_url = ""
-        if c.get("representative_face_crop_s3"):
-            crop_url = s3_service.generate_download_url(c["representative_face_crop_s3"])
-            
-        clusters_payload.append({
-            "cluster_index": c["cluster_index"],
-            "face_crop_url": crop_url,
-            "photo_count": c.get("photo_count", 0)
-        })
+    for c in response_payload["face_clusters"]:
+        crop_s3 = c.get("representative_face_crop_s3")
+        c["face_crop_url"] = s3_service.get_photo_url(crop_s3) if crop_s3 else ""
 
-    # Event cover URL
     cover_url = ""
-    if event.get("cover_photo_id") and photos_data:
-        cov_photo = next((p for p in photos_data if p["id"] == event["cover_photo_id"]), None)
+    if response_payload.get("cover_photo_id"):
+        cov_photo = None
+        for m in response_payload["moments"]:
+            for p in m["photos"]:
+                if p["id"] == response_payload["cover_photo_id"]:
+                    cov_photo = p
+                    break
         if cov_photo:
-            cover_url = s3_service.generate_download_url(cov_photo["s3_key"])
-    elif moments_payload and moments_payload[0]["photos"]:
-        cover_url = moments_payload[0]["photos"][0]["url"]
+            cover_url = cov_photo["url"]
+    elif response_payload["moments"] and response_payload["moments"][0]["photos"]:
+        cover_url = response_payload["moments"][0]["photos"][0]["url"]
+    response_payload["cover_photo_url"] = cover_url
 
-    response_payload = {
-        "id": order_id,
-        "event_name": event.get("event_name") or "My Event",
-        "event_type": event.get("book_type") or "Wedding",
-        "event_date": str(event.get("event_date")) if event.get("event_date") else "",
-        "event_location": event.get("event_location") or "",
-        "cover_photo_url": cover_url,
-        "caption_style": event.get("caption_style", "cinematic"),
-        "tier": event.get("tier") or "free",
-        "moments": moments_payload,
-        "face_clusters": clusters_payload,
-        "allow_guest_uploads": event.get("allow_guest_uploads", False),
-        "allow_reactions": event.get("allow_reactions", True),
-        "total_photos": len(photos_data),
-        "view_count": event.get("view_count", 0)
-    }
-
-    # Save to Redis
-    if rc:
-        try:
-            rc.setex(cache_key, 300, json.dumps(response_payload))
-        except Exception as e:
-            logger.error("Redis write error: %s", e)
-
-    # Increment view count async
-    background_tasks.add_task(increment_views_task, slug, event.get("view_count", 0))
+    background_tasks.add_task(increment_views_task, slug, response_payload.get("view_count", 0))
 
     return response_payload
 
@@ -418,8 +534,8 @@ def get_photos_for_face_cluster(slug: str, cluster_index: int):
             caption = p.get("caption_edited") or p.get("caption_v2") or p.get("caption") or ""
             matching_photos.append({
                 "id": p["id"],
-                "url": s3_service.generate_download_url(p["s3_key"]),
-                "thumb_url": s3_service.generate_download_url(p["s3_key"], expires_in=3600),
+                "url": s3_service.get_photo_url(p["s3_key"]),
+                "thumb_url": s3_service.get_photo_url(p["s3_key"], expires_in=3600),
                 "caption": caption
             })
             
@@ -599,8 +715,8 @@ def get_review_data(slug: str, authorization: Optional[str] = Header(None)):
         caption = p.get("caption_edited") or p.get("caption_v2") or p.get("caption") or ""
         review_photos.append({
             "id": p["id"],
-            "url": s3_service.generate_download_url(p["s3_key"]),
-            "thumb_url": s3_service.generate_download_url(p["s3_key"], expires_in=3600),
+            "url": s3_service.get_photo_url(p["s3_key"]),
+            "thumb_url": s3_service.get_photo_url(p["s3_key"], expires_in=3600),
             "caption": caption,
             "is_selected": p.get("is_selected", False),
             "moment_id": p.get("moment_id"),
