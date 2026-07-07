@@ -105,34 +105,26 @@ def generate_upload_url(user_id: str, batch_id: str, filename: str) -> dict:
     if os.getenv("ENV") == "production":
         raise ValueError("S3 client not available in production - cannot generate upload URL")
 
-    # Local dev fallback url
+    # Mock / Local fallback url
+    # Point the upload URL to our local FastAPI server upload endpoint
     api_url = _get_api_url()
-    local_url = f"{api_url}/upload/local-dev-files/{s3_key}"
+    local_url = f"{api_url}/upload/mock-s3/{s3_key}"
     return {"url": local_url, "key": s3_key, "expires_in": 3600}
-
-def get_photo_url(s3_key: str, expires_in: int = 3600) -> str | None:
+    
+def generate_download_url(s3_key: str, expires_in: int = 300) -> str:
     """
-    Generate a fresh pre-signed URL for a photo.
-    Returns None if the object doesn't exist in S3 (or local path in dev) — caller must handle this
-    by showing an empty state, NEVER by substituting a different image.
+    Generates a pre-signed S3 download URL or returns the key if it is a full web URL.
     """
     if not s3_key:
-        return None
-
+        return ""
+        
     if s3_key.startswith("http://") or s3_key.startswith("https://"):
         return s3_key
-
-    s3_client = get_s3_client()
+        
     bucket_name = os.getenv("S3_BUCKET_NAME", "memorylane-photos")
+    s3_client = get_s3_client()
     
     if s3_client:
-        try:
-            # Verify the object actually exists before generating a URL for it
-            s3_client.head_object(Bucket=bucket_name, Key=s3_key)
-        except Exception as e:
-            logger.error("Photo not found in S3, cannot generate URL: %s — %s", s3_key, e)
-            return None
-
         try:
             url = s3_client.generate_presigned_url(
                 "get_object",
@@ -143,33 +135,18 @@ def get_photo_url(s3_key: str, expires_in: int = 3600) -> str | None:
                 ExpiresIn=expires_in
             )
             return url
-        except Exception as e:
-            logger.error("Failed to generate pre-signed URL for %s: %s", s3_key, e)
-            return None
-    else:
-        if os.getenv("ENV") == "production":
-            logger.error("S3 client not available in production - cannot generate download URL")
-            return None
+        except ClientError as e:
+            logger.error("ClientError generating presigned download url: %s", e)
+            if os.getenv("ENV") == "production":
+                raise ValueError(f"Failed to generate pre-signed download URL: {e}")
+            
+    if os.getenv("ENV") == "production":
+        raise ValueError("S3 client not available in production - cannot generate download URL")
 
-        # Check if local file exists in local storage
-        local_path = os.path.join(LOCAL_S3_DIR, s3_key)
-        if not os.path.exists(local_path):
-            logger.error("Local file not found for key: %s", s3_key)
-            return None
-
-        # Serve local dev file URL
-        api_url = _get_api_url()
-        local_url = f"{api_url}/upload/local-dev-files/{s3_key}"
-        return local_url
-
-def generate_download_url(s3_key: str, expires_in: int = 300) -> str:
-    """
-    Generates a pre-signed S3 download URL.
-    Backward compatible wrapper returning empty string instead of None.
-    """
-    url = get_photo_url(s3_key, expires_in=expires_in)
-    return url or ""
-
+    # Mock / Local fallback url
+    api_url = _get_api_url()
+    local_url = f"{api_url}/upload/mock-s3/{s3_key}"
+    return local_url
 
 def delete_batch(batch_prefix: str) -> bool:
     """

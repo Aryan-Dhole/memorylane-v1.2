@@ -3,7 +3,6 @@
 import React from "react"
 import { motion } from "framer-motion"
 import { Heart, Laugh, Smile, MessageSquare, ExternalLink } from "lucide-react"
-import { PhotoUnavailable } from "@/components/ui/PhotoUnavailable"
 
 interface Photo {
   id: string;
@@ -86,23 +85,12 @@ export default function MomentSection({
         onClick={() => onOpenLightbox(globalPhotoIndex)}
       >
         <div className={`relative w-full ${layoutAspect} overflow-hidden`}>
-          {photo.thumb_url || photo.url ? (
-            <img
-              src={photo.thumb_url || photo.url}
-              alt={photo.caption || "MemoryLane event photo"}
-              loading="lazy"
-              className="w-full h-full object-cover transition-transform duration-[3000ms] group-hover:scale-105"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-                e.currentTarget.parentElement?.querySelector('.photo-fallback')?.classList.remove('hidden');
-              }}
-            />
-          ) : (
-            <PhotoUnavailable className="w-full h-full absolute inset-0" />
-          )}
-          <div className="photo-fallback hidden absolute inset-0">
-            <PhotoUnavailable className="w-full h-full" />
-          </div>
+          <img
+            src={photo.thumb_url || photo.url}
+            alt={photo.caption || "MemoryLane event photo"}
+            loading="lazy"
+            className="w-full h-full object-cover transition-transform duration-[3000ms] group-hover:scale-105"
+          />
           {/* Cover gradient on hover */}
           <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/90 via-zinc-950/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
           

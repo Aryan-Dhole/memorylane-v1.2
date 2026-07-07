@@ -114,9 +114,9 @@ def score_image_quality(image_path: str) -> dict:
 if __name__ == "__main__":
     # Self-test block
     print("Testing quality_scorer...")
-    test_s3_key = "uploads/user123/batch456/photo1.jpg"
-    print(f"Test S3 Key: {test_s3_key}")
-    print(score_image_quality(test_s3_key))
+    mock_s3_key = "uploads/user123/batch456/photo1.jpg"
+    print(f"Mock S3 Key: {mock_s3_key}")
+    print(score_image_quality(mock_s3_key))
     
     print(f"Mock Blurry Key:")
     print(score_image_quality("blurry_photo.jpg"))

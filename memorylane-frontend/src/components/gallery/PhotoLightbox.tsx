@@ -3,7 +3,6 @@
 import React, { useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { X, ChevronLeft, ChevronRight, Download, Heart } from "lucide-react"
-import { PhotoUnavailable } from "@/components/ui/PhotoUnavailable"
 
 interface Photo {
   id: string;
@@ -76,9 +75,8 @@ export default function PhotoLightbox({
             <div className="flex items-center gap-4">
               <button
                 onClick={handleDownload}
-                disabled={!photo.url}
-                className="text-zinc-400 hover:text-white p-2 rounded-full hover:bg-zinc-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title={photo.url ? "Download full resolution photo" : "Photo download unavailable"}
+                className="text-zinc-400 hover:text-white p-2 rounded-full hover:bg-zinc-900 transition-colors"
+                title="Download full resolution photo"
               >
                 <Download className="w-5 h-5" />
               </button>
@@ -103,27 +101,16 @@ export default function PhotoLightbox({
 
             {/* Main Image */}
             <div className="w-full max-w-4xl mx-auto h-[65vh] md:h-[75vh] flex items-center justify-center relative">
-              {photo.url ? (
-                <motion.img
-                  key={photo.id}
-                  initial={{ opacity: 0, scale: 0.96 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.96 }}
-                  transition={{ duration: 0.3 }}
-                  src={photo.url}
-                  alt="Lightbox expanded event detail"
-                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    e.currentTarget.parentElement?.querySelector('.photo-fallback')?.classList.remove('hidden');
-                  }}
-                />
-              ) : (
-                <PhotoUnavailable className="w-full h-full rounded-lg" />
-              )}
-              <div className="photo-fallback hidden absolute inset-0 flex items-center justify-center">
-                <PhotoUnavailable className="w-full h-full rounded-lg" />
-              </div>
+              <motion.img
+                key={photo.id}
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.3 }}
+                src={photo.url}
+                alt="Lightbox expanded event detail"
+                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              />
             </div>
 
             {/* Next arrow */}

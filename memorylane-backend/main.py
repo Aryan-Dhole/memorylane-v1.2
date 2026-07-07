@@ -8,13 +8,6 @@ from dotenv import load_dotenv
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(backend_dir, ".env"))
 
-if os.getenv("ENV") == "production" and os.getenv("MOCK_MODE") == "true":
-    raise RuntimeError(
-        "FATAL: MOCK_MODE is enabled in production. Refusing to start. "
-        "This would serve fake data to real users."
-    )
-
-
 # Sentry initialization if DSN is provided
 if os.getenv("SENTRY_DSN"):
     try:

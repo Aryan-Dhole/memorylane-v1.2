@@ -47,38 +47,14 @@ def get_redis_client():
         pass
     return None
 
-def populate_presigned_urls(payload: dict) -> dict:
-    """
-    Dynamically generates fresh S3 pre-signed URLs on every request
-    for cover image, moment covers, and photos.
-    """
-    # 1. Resolve main cover photo URL
-    if payload.get("cover_photo_s3_key"):
-        payload["cover_photo_url"] = s3_service.get_photo_url(payload["cover_photo_s3_key"]) or ""
-    else:
-        payload["cover_photo_url"] = ""
-
-    # 2. Resolve URLs for moments and photos
-    for moment in payload.get("moments", []):
-        if moment.get("cover_photo_s3_key"):
-            moment["cover_photo_url"] = s3_service.get_photo_url(moment["cover_photo_s3_key"]) or ""
-        else:
-            moment["cover_photo_url"] = ""
-            
-        for photo in moment.get("photos", []):
-            url = s3_service.get_photo_url(photo["s3_key"])
-            photo["url"] = url
-            photo["thumb_url"] = s3_service.get_photo_url(photo["s3_key"], expires_in=3600)
-            photo["available"] = url is not None
-
-    # 3. Resolve URLs for face clusters
-    for cluster in payload.get("face_clusters", []):
-        if cluster.get("representative_face_crop_s3"):
-            cluster["face_crop_url"] = s3_service.get_photo_url(cluster["representative_face_crop_s3"]) or ""
-        else:
-            cluster["face_crop_url"] = ""
-
-    return payload
+def invalidate_gallery_cache(slug: str):
+    rc = get_redis_client()
+    if rc:
+        try:
+            rc.delete(f"gallery:{slug}")
+            logger.info("Invalidated Redis cache for gallery: %s", slug)
+        except Exception as e:
+            logger.error("Failed to delete Redis cache: %s", e)
 
 @router.get("/{slug}")
 @limiter.limit("60/minute")
@@ -93,10 +69,8 @@ def get_gallery_details(request: Request, slug: str, background_tasks: Backgroun
         try:
             cached = rc.get(cache_key)
             if cached:
-                logger.info("Serving gallery metadata from Redis cache: %s", slug)
+                logger.info("Serving gallery payload from Redis cache: %s", slug)
                 data = json.loads(cached)
-                # Populate pre-signed S3 URLs fresh on every read
-                data = populate_presigned_urls(data)
                 # Increment views async
                 background_tasks.add_task(increment_views_task, slug, data.get("view_count", 0))
                 return data
@@ -183,7 +157,7 @@ def get_gallery_details(request: Request, slug: str, background_tasks: Backgroun
         except Exception as e:
             logger.error("Failed to query reactions: %s", e)
 
-    # Format moments payload (base metadata only)
+    # Format moments payload
     moments_payload = []
     for idx, moment in enumerate(moments_list):
         m_id = moment.get("id")
@@ -202,48 +176,53 @@ def get_gallery_details(request: Request, slug: str, background_tasks: Backgroun
                 caption = p.get("caption_edited") or p.get("caption_v2") or p.get("caption") or ""
                 m_photos.append({
                     "id": p_id,
-                    "s3_key": p["s3_key"],
+                    "url": s3_service.generate_download_url(p["s3_key"]),
+                    "thumb_url": s3_service.generate_download_url(p["s3_key"], expires_in=3600),
                     "caption": caption,
                     "face_cluster_ids": p.get("face_cluster_ids") or [],
                     "dominant_emotion": p.get("visual_analysis", {}).get("dominant_emotion") if p.get("visual_analysis") else "candid_unaware",
                     "reaction_counts": reactions_dict.get(p_id, {"heart": 0, "laugh": 0, "cry": 0, "wow": 0})
                 })
                 
-        # Resolve moment cover image S3 key
-        m_cover_s3 = ""
+        # Resolve moment cover image
+        m_cover = ""
         if moment.get("cover_photo_id"):
             cov_photo = next((p for p in photos_data if p["id"] == moment["cover_photo_id"]), None)
             if cov_photo:
-                m_cover_s3 = cov_photo["s3_key"]
+                m_cover = s3_service.generate_download_url(cov_photo["s3_key"])
         elif m_photos:
-            m_cover_s3 = m_photos[0]["s3_key"]
+            m_cover = m_photos[0]["url"]
             
         moments_payload.append({
             "id": m_id or str(idx),
             "name": moment["name"],
             "display_order": moment["display_order"],
-            "cover_photo_s3_key": m_cover_s3,
+            "cover_photo_url": m_cover,
             "photos": m_photos
         })
 
-    # Fetch face clusters (base metadata only)
+    # Fetch face clusters
     clusters_res = supabase.table("face_clusters").select("*").eq("order_id", order_id).execute()
     clusters_payload = []
     for c in (clusters_res.data or []):
+        crop_url = ""
+        if c.get("representative_face_crop_s3"):
+            crop_url = s3_service.generate_download_url(c["representative_face_crop_s3"])
+            
         clusters_payload.append({
             "cluster_index": c["cluster_index"],
-            "representative_face_crop_s3": c.get("representative_face_crop_s3") or "",
+            "face_crop_url": crop_url,
             "photo_count": c.get("photo_count", 0)
         })
 
-    # Event cover S3 key
-    cover_s3_key = ""
+    # Event cover URL
+    cover_url = ""
     if event.get("cover_photo_id") and photos_data:
         cov_photo = next((p for p in photos_data if p["id"] == event["cover_photo_id"]), None)
         if cov_photo:
-            cover_s3_key = cov_photo["s3_key"]
+            cover_url = s3_service.generate_download_url(cov_photo["s3_key"])
     elif moments_payload and moments_payload[0]["photos"]:
-        cover_s3_key = moments_payload[0]["photos"][0]["s3_key"]
+        cover_url = moments_payload[0]["photos"][0]["url"]
 
     response_payload = {
         "id": order_id,
@@ -251,7 +230,7 @@ def get_gallery_details(request: Request, slug: str, background_tasks: Backgroun
         "event_type": event.get("book_type") or "Wedding",
         "event_date": str(event.get("event_date")) if event.get("event_date") else "",
         "event_location": event.get("event_location") or "",
-        "cover_photo_s3_key": cover_s3_key,
+        "cover_photo_url": cover_url,
         "caption_style": event.get("caption_style", "cinematic"),
         "tier": event.get("tier") or "free",
         "moments": moments_payload,
@@ -262,7 +241,7 @@ def get_gallery_details(request: Request, slug: str, background_tasks: Backgroun
         "view_count": event.get("view_count", 0)
     }
 
-    # Save metadata-only response payload to Redis
+    # Save to Redis
     if rc:
         try:
             rc.setex(cache_key, 300, json.dumps(response_payload))
@@ -272,11 +251,7 @@ def get_gallery_details(request: Request, slug: str, background_tasks: Backgroun
     # Increment view count async
     background_tasks.add_task(increment_views_task, slug, event.get("view_count", 0))
 
-    # Dynamically populate pre-signed S3 URLs fresh for the current request
-    response_payload = populate_presigned_urls(response_payload)
-
     return response_payload
-
 
 @router.post("/{slug}/react")
 def react_to_photo(slug: str, req: ReactRequest):
@@ -443,8 +418,8 @@ def get_photos_for_face_cluster(slug: str, cluster_index: int):
             caption = p.get("caption_edited") or p.get("caption_v2") or p.get("caption") or ""
             matching_photos.append({
                 "id": p["id"],
-                "url": s3_service.get_photo_url(p["s3_key"]),
-                "thumb_url": s3_service.get_photo_url(p["s3_key"], expires_in=3600),
+                "url": s3_service.generate_download_url(p["s3_key"]),
+                "thumb_url": s3_service.generate_download_url(p["s3_key"], expires_in=3600),
                 "caption": caption
             })
             
@@ -624,8 +599,8 @@ def get_review_data(slug: str, authorization: Optional[str] = Header(None)):
         caption = p.get("caption_edited") or p.get("caption_v2") or p.get("caption") or ""
         review_photos.append({
             "id": p["id"],
-            "url": s3_service.get_photo_url(p["s3_key"]),
-            "thumb_url": s3_service.get_photo_url(p["s3_key"], expires_in=3600),
+            "url": s3_service.generate_download_url(p["s3_key"]),
+            "thumb_url": s3_service.generate_download_url(p["s3_key"], expires_in=3600),
             "caption": caption,
             "is_selected": p.get("is_selected", False),
             "moment_id": p.get("moment_id"),
